@@ -50,7 +50,7 @@ Novacart is a full-stack e-commerce web application. The MVP delivers five core 
 
 - Add, remove, update product quantities
 - Real-time price calculation
-- Cart state managed via **React Context API**
+- Cart state managed via **React Context API** + reusable components (CartItem, CartSummary)
 - Cart persists across sessions for logged-in users
 
 ### 4. Checkout & Payment
