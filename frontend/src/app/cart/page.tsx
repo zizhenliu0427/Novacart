@@ -1,11 +1,21 @@
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Button } from '@/components/ui/Button';
+import { CartIcon } from '@/components/icons';
+
 export default function CartPage() {
   return (
-    <div>
-      <h1 className="text-3xl font-bold mb-8">Shopping Cart</h1>
-      <div className="bg-white rounded-lg shadow p-8 text-center text-gray-400">
-        <p className="text-4xl mb-4">🛒</p>
-        <p>Your cart is empty</p>
-      </div>
+    <div className="space-y-6">
+      <h1 className="text-2xl font-semibold tracking-tight text-ink">Your cart</h1>
+      <EmptyState
+        icon={<CartIcon />}
+        title="Your cart is empty"
+        description="Browse the catalogue and add items — they'll show up here."
+        action={
+          <a href="/products">
+            <Button>Browse products</Button>
+          </a>
+        }
+      />
     </div>
   );
 }

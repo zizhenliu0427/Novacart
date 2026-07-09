@@ -1,3 +1,92 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ─────────────────────────────────────────────────────────────
+   Design tokens — neutral, multi-category e-commerce system.
+   Light is the default; dark follows the OS via prefers-color-scheme.
+   Rebrand = change --accent (+ hover / weak).
+   ───────────────────────────────────────────────────────────── */
+:root {
+  color-scheme: light;
+
+  --bg: #ffffff;
+  --bg-subtle: #f5f6f8;
+  --surface: #ffffff;
+  --border: #e5e7eb;
+
+  --ink: #111827;
+  --ink-muted: #6b7280;
+
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-weak: #eff4ff;
+  --accent-contrast: #ffffff;
+
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --sale: #dc2626;
+  --rating: #f59e0b;
+
+  --shadow-card: 0 1px 2px rgba(17, 24, 39, 0.06);
+  --shadow-hover: 0 4px 16px rgba(17, 24, 39, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --bg: #0b0e14;
+    --bg-subtle: #131722;
+    --surface: #131722;
+    --border: #262b36;
+
+    --ink: #e5e7eb;
+    --ink-muted: #9ca3af;
+
+    --accent: #3b82f6;
+    --accent-hover: #60a5fa;
+    --accent-weak: #17233b;
+    --accent-contrast: #ffffff;
+
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --danger: #f87171;
+    --sale: #f87171;
+    --rating: #fbbf24;
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-hover: 0 6px 20px rgba(0, 0, 0, 0.55);
+  }
+}
+
+@layer base {
+  body {
+    background-color: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-sans), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Consistent, visible focus for accessibility (P14 lists HCI). */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Tabular figures for prices / quantities. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

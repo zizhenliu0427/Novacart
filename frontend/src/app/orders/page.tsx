@@ -1,11 +1,21 @@
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Button } from '@/components/ui/Button';
+import { PackageIcon } from '@/components/icons';
+
 export default function OrdersPage() {
   return (
-    <div>
-      <h1 className="text-3xl font-bold mb-8">Order History</h1>
-      <div className="bg-white rounded-lg shadow p-8 text-center text-gray-400">
-        <p className="text-4xl mb-4">📦</p>
-        <p>No orders yet</p>
-      </div>
+    <div className="space-y-6">
+      <h1 className="text-2xl font-semibold tracking-tight text-ink">Order history</h1>
+      <EmptyState
+        icon={<PackageIcon />}
+        title="No orders yet"
+        description="Once you complete a purchase, your orders and their status appear here."
+        action={
+          <a href="/products">
+            <Button>Start shopping</Button>
+          </a>
+        }
+      />
     </div>
   );
 }
