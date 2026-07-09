@@ -1,17 +1,27 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ProductCard } from '@/components/ProductCard';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ProductCard } from '@/components/ProductCard';
+import { Input } from '@/components/ui/Input';
 import { GridIcon } from '@/components/icons';
-import type { Product, PagedResult } from '@/types/product';
+import type { PagedResult, Product } from '@/types/product';
 
 const SORT_OPTIONS = [
   { value: 'newest', label: 'Newest' },
   { value: 'price_asc', label: 'Price: Low → High' },
   { value: 'price_desc', label: 'Price: High → Low' },
   { value: 'name_asc', label: 'Name (A–Z)' },
+];
+
+const CATEGORIES = [
+  { id: null, name: 'All' },
+  { id: 1, name: 'Electronics' },
+  { id: 2, name: 'Apparel' },
+  { id: 3, name: 'Home & Living' },
+  { id: 4, name: 'Accessories' },
+  { id: 5, name: 'Books' },
 ];
 
 export default function ProductsPage() {
@@ -22,7 +32,7 @@ export default function ProductsPage() {
 
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [category, setCategory] = useState('All');
+  const [categoryId, setCategoryId] = useState<number | null>(null);
   const [sort, setSort] = useState('newest');
 
   // Debounce the search query
@@ -36,6 +46,8 @@ export default function ProductsPage() {
     setError(null);
     const params = new URLSearchParams({ sort, page: '1', pageSize: '50' });
     if (debouncedQuery) params.set('q', debouncedQuery);
+    if (categoryId !== null) params.set('categoryId', categoryId.toString());
+
     try {
       const res = await fetch(`/api/products?${params}`);
       if (!res.ok) throw new Error(`Request failed (${res.status})`);
@@ -47,25 +59,11 @@ export default function ProductsPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedQuery, sort]);
+  }, [debouncedQuery, sort, categoryId]);
 
-  useEffect(() => { fetchProducts(); }, [fetchProducts]);
-
-  // Derive categories from loaded products (client-side filter for the chip bar)
-  const categories = useMemo(
-    () => ['All', ...Array.from(new Set(products.map((p) => p.categoryName ?? '')))
-      .filter(Boolean).sort()],
-    [products],
-  );
-
-  // Apply category chip filter client-side (server handles search + sort)
-  const visible = useMemo(
-    () =>
-      category === 'All'
-        ? products
-        : products.filter((p) => p.categoryName === category),
-    [products, category],
-  );
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
 
   return (
     <div className="space-y-6">
@@ -76,17 +74,17 @@ export default function ProductsPage() {
           <p className="text-sm text-ink-muted">
             {loading
               ? 'Loading catalogue…'
-              : `${visible.length}${totalCount > visible.length ? ` of ${totalCount}` : ''} item${visible.length === 1 ? '' : 's'}`}
+              : `${products.length}${totalCount > products.length ? ` of ${totalCount}` : ''} item${products.length === 1 ? '' : 's'}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <input
+          <Input
             id="product-search"
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search products…"
-            className="h-10 w-full max-w-xs rounded-lg border border-border bg-surface px-3 text-sm text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+            className="max-w-xs"
           />
           <select
             id="product-sort"
@@ -102,19 +100,19 @@ export default function ProductsPage() {
       </div>
 
       {/* Category chips */}
-      {!loading && !error && categories.length > 1 && (
+      {!loading && !error && (
         <div className="flex flex-wrap gap-2">
-          {categories.map((c) => (
+          {CATEGORIES.map((cat) => (
             <button
-              key={c}
-              onClick={() => setCategory(c)}
+              key={cat.name}
+              onClick={() => setCategoryId(cat.id)}
               className={`rounded-full border px-3 py-1.5 text-sm transition ${
-                category === c
+                categoryId === cat.id
                   ? 'border-transparent bg-accent-weak text-accent'
                   : 'border-border text-ink-muted hover:bg-bg-subtle hover:text-ink'
               }`}
             >
-              {c}
+              {cat.name}
             </button>
           ))}
         </div>
@@ -146,15 +144,15 @@ export default function ProductsPage() {
       )}
 
       {/* Grid */}
-      {!loading && !error && visible.length > 0 && (
+      {!loading && !error && products.length > 0 && (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {visible.map((product) => (
+          {products.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}
         </div>
       )}
 
-      {!loading && !error && visible.length === 0 && (
+      {!loading && !error && products.length === 0 && (
         <EmptyState
           icon={<GridIcon />}
           title="No products match"

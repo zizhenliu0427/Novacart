@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import { SparkIcon } from '@/components/icons';
 
 export default function RegisterPage() {
@@ -65,55 +66,42 @@ export default function RegisterPage() {
           </div>
         )}
 
-        <div className="space-y-1.5">
-          <label htmlFor="register-name" className="block text-sm font-medium text-ink">
-            Full name
-          </label>
-          <input
-            id="register-name"
-            type="text"
-            autoComplete="name"
-            required
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            placeholder="Jane Smith"
-            className="h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-          />
-        </div>
+        <Input
+          id="register-name"
+          label="Full name"
+          type="text"
+          autoComplete="name"
+          required
+          value={fullName}
+          onChange={(e) => setFullName(e.target.value)}
+          placeholder="Jane Smith"
+          size="lg"
+        />
 
-        <div className="space-y-1.5">
-          <label htmlFor="register-email" className="block text-sm font-medium text-ink">
-            Email
-          </label>
-          <input
-            id="register-email"
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            className="h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-          />
-        </div>
+        <Input
+          id="register-email"
+          label="Email"
+          type="email"
+          autoComplete="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="you@example.com"
+          size="lg"
+        />
 
-        <div className="space-y-1.5">
-          <label htmlFor="register-password" className="block text-sm font-medium text-ink">
-            Password
-            <span className="ml-1 font-normal text-ink-muted">(min. 8 characters)</span>
-          </label>
-          <input
-            id="register-password"
-            type="password"
-            autoComplete="new-password"
-            required
-            minLength={8}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            className="h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-          />
-        </div>
+        <Input
+          id="register-password"
+          label="Password (min. 8 characters)"
+          type="password"
+          autoComplete="new-password"
+          required
+          minLength={8}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="••••••••"
+          size="lg"
+        />
 
         <Button type="submit" className="w-full" disabled={loading}>
           {loading ? 'Creating account…' : 'Create account'}

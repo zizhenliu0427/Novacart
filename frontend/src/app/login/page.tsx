@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import { SparkIcon } from '@/components/icons';
 
 export default function LoginPage() {
@@ -58,37 +59,29 @@ export default function LoginPage() {
           </div>
         )}
 
-        <div className="space-y-1.5">
-          <label htmlFor="login-email" className="block text-sm font-medium text-ink">
-            Email
-          </label>
-          <input
-            id="login-email"
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            className="h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-          />
-        </div>
+        <Input
+          id="login-email"
+          label="Email"
+          type="email"
+          autoComplete="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="you@example.com"
+          size="lg"
+        />
 
-        <div className="space-y-1.5">
-          <label htmlFor="login-password" className="block text-sm font-medium text-ink">
-            Password
-          </label>
-          <input
-            id="login-password"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            className="h-11 w-full rounded-lg border border-border bg-surface px-3 text-sm text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-          />
-        </div>
+        <Input
+          id="login-password"
+          label="Password"
+          type="password"
+          autoComplete="current-password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="••••••••"
+          size="lg"
+        />
 
         <Button type="submit" className="w-full" disabled={loading}>
           {loading ? 'Signing in…' : 'Sign in'}

@@ -8,39 +8,9 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PackageIcon } from '@/components/icons';
-import { formatPrice } from '@/types/product';
+import { formatPrice, PagedResult } from '@/types/product';
+import { Order } from '@/types/order';
 import { apiCall } from '@/lib/api';
-
-interface OrderItem {
-  id: string;
-  productId: string;
-  productName: string;
-  productSlug?: string;
-  price: number;
-  quantity: number;
-  lineTotal: number;
-}
-
-interface Order {
-  id: string;
-  orderNumber: string;
-  subtotal: number;
-  shippingCost: number;
-  tax: number;
-  total: number;
-  currency: string;
-  currentStatus: string;
-  createdAt: string;
-  items?: OrderItem[];
-}
-
-interface PagedResult<T> {
-  items: T[];
-  totalCount: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
-}
 
 export default function OrdersPage() {
   const { user, token } = useAuth();

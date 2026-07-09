@@ -193,9 +193,9 @@ The P14 spec ([P14_Modern_Ecommerce_Web_App.md](P14_Modern_Ecommerce_Web_App.md)
 
 **Foundation / cross-cutting**
 - [x] Introduce a shared `AppException`(message, statusCode) + a controller/exception-handling helper (generalise the `AuthException` pattern).
-- [ ] Add global validation error shaping (consistent 400 body).
+- [x] Add global validation error shaping (consistent 400 body).
 - [x] Frontend: design tokens (globals.css light + dark via `prefers-color-scheme`) + tailwind mapping + Inter font + base components (Button, Card, Badge, ProductCard, EmptyState).
-- [ ] Frontend: add an `Input` component (needed for auth/search forms) to complete the base set.
+- [x] Frontend: add an `Input` component (needed for auth/search forms) to complete the base set.
 - [x] Frontend: `useAuth` + `useCart` contexts/hooks; wire `apiCall` token injection.
 
 **Frontend shell polish**

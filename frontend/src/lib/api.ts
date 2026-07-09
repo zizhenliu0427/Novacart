@@ -1,3 +1,5 @@
+import { clearToken } from './auth';
+
 const API_BASE = '/api';
 
 interface ApiOptions {
@@ -26,7 +28,7 @@ export async function apiCall<T>(endpoint: string, options: ApiOptions = {}): Pr
   if (res.status === 401 || res.status === 403) {
     // Auto-logout on auth failure
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('token');
+      clearToken();
       window.location.href = '/login';
     }
     throw new Error('Authentication failed');
