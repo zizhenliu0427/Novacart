@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -16,25 +17,29 @@ export function ProductCard({ product }: { product: Product }) {
 
   return (
     <Card interactive className="flex flex-col overflow-hidden">
-      <div className="relative flex aspect-square items-center justify-center bg-bg-subtle">
-        <span className="select-none text-3xl font-semibold text-ink-muted/50">
-          {product.name.charAt(0)}
-        </span>
-        {onSale && (
-          <span className="absolute left-3 top-3">
-            <Badge tone="sale">Sale</Badge>
+      <Link href={`/products/${product.id}`} className="flex flex-1 flex-col">
+        <div className="relative flex aspect-square items-center justify-center bg-bg-subtle">
+          <span className="select-none text-3xl font-semibold text-ink-muted/50">
+            {product.name.charAt(0)}
           </span>
-        )}
-      </div>
+          {onSale && (
+            <span className="absolute left-3 top-3">
+              <Badge tone="sale">Sale</Badge>
+            </span>
+          )}
+        </div>
 
-      <div className="flex flex-1 flex-col gap-2 p-4">
-        <span className="text-xs font-medium uppercase tracking-wide text-ink-muted">
-          {product.category}
-        </span>
-        <h3 className="line-clamp-2 font-semibold leading-snug text-ink">{product.name}</h3>
-        <p className="line-clamp-2 text-sm text-ink-muted">{product.description}</p>
+        <div className="flex flex-1 flex-col gap-2 p-4">
+          <span className="text-xs font-medium uppercase tracking-wide text-ink-muted">
+            {product.category}
+          </span>
+          <h3 className="line-clamp-2 font-semibold leading-snug text-ink">{product.name}</h3>
+          <p className="line-clamp-2 text-sm text-ink-muted">{product.description}</p>
+        </div>
+      </Link>
 
-        <div className="mt-auto flex items-center justify-between pt-2">
+      <div className="px-4 pb-4">
+        <div className="flex items-center justify-between">
           <div className="flex items-baseline gap-2">
             <span className="tnum text-lg font-semibold text-ink">
               {formatPrice(product.price)}

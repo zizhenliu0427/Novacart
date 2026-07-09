@@ -134,6 +134,16 @@ neutrality), not a niche boutique. This replaces the placeholder `indigo-600` st
 > reference the code follows — keep them in sync. **Not yet built:** functional wiring (auth pages, cart/`useCart`, real product
 > detail with the metadata attribute table) — those come with the P1 features in §5.
 
+**Frontend shell — polish items (now DONE ✅):**
+- ✅ Favicon ([app/icon.svg](frontend/src/app/icon.svg)) + maskable icon ([public/icon.svg](frontend/public/icon.svg)) + **PWA web manifest** ([app/manifest.ts](frontend/src/app/manifest.ts), served at `/manifest.webmanifest`). Full PWA (service worker, installability) is still the P2 item in §6.
+- ✅ Styled [not-found.tsx](frontend/src/app/not-found.tsx) (404), route-level [loading.tsx](frontend/src/app/loading.tsx), and [error.tsx](frontend/src/app/error.tsx).
+- ✅ `ProductCard` now links to `products/[id]`, and a minimal [product detail page](frontend/src/app/products/[id]/page.tsx) exists (fetches `/api/products/{id}`).
+
+**Still open (functional — belong with the P1 features):**
+- The "Add to cart" button is still inert — wire it to `useCart` (Feature 3).
+- Product detail shows the backend's current placeholder; real content + the **metadata attribute table** comes with Feature 2. There's a marked spot in the detail page for it.
+- Consider routing component data-fetching through the `apiCall` wrapper in [lib/api.ts](frontend/src/lib/api.ts) instead of raw `fetch` as this grows.
+
 **Design principles**
 1. **Neutral canvas, product does the talking.** White/near-white surfaces, restrained gray UI; photos provide the color.
 2. **One themeable accent.** A single brand/action color drives buttons, links, active states — swap one token to rebrand.
@@ -302,8 +312,15 @@ features above. These are mapped to the README's priority tiers (P1 = MVP · P2 
 **Foundation / cross-cutting**
 - [ ] Introduce a shared `AppException`(message, statusCode) + a controller/exception-handling helper (generalise the `AuthException` pattern).
 - [ ] Add global validation error shaping (consistent 400 body).
-- [ ] Frontend: set up design tokens (globals.css `:root` + dark overrides + tailwind.config), Inter font, and base UI components (Button, Input, Card).
+- [x] Frontend: design tokens (globals.css light + dark via `prefers-color-scheme`) + tailwind mapping + Inter font + base components (Button, Card, Badge, ProductCard, EmptyState).
+- [ ] Frontend: add an **`Input`** component (needed for auth/search forms) to complete the base set.
 - [ ] Frontend: `useAuth` + `useCart` contexts/hooks; wire `apiCall` token injection to the auth store.
+
+**Frontend shell polish** (see §4)
+- [x] Favicon + maskable icon + PWA web manifest (`app/icon.svg`, `public/icon.svg`, `app/manifest.ts`).
+- [x] Styled `not-found.tsx` (404), route-level `loading.tsx`, and `error.tsx`.
+- [x] `ProductCard` links to `products/[id]`; minimal product detail route added.
+- [ ] Wire the "Add to cart" button to `useCart` (with Feature 3).
 
 **Feature 1 — Auth (finish)**
 - [ ] Login page, Register page (design system).
