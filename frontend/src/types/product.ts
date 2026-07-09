@@ -1,13 +1,57 @@
 export interface Product {
-  id: number | string;
+  id: string;
+  slug: string;
   name: string;
   price: number;
-  category: string;
-  description: string;
+  currency: string;
+  stockQuantity: number;
+  categoryId?: number;
+  categoryName?: string;
+  description?: string;
+  tags: string[];
   /** Optional compare-at price for sale display. */
   compareAtPrice?: number;
+  /** Raw JSON string from the DB — rendered as a dynamic attribute table. */
+  metadata?: string;
+}
+
+export interface PagedResult<T> {
+  items: T[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 }
 
 export function formatPrice(value: number, currency = 'AUD'): string {
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency }).format(value);
+}
+
+/** Parse the raw metadata JSON string into a key→value record for display. */
+export function parseMetadata(raw: string | undefined | null): Record<string, unknown> {
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+/** Format a metadata value for display in the attribute table. */
+export function formatMetadataValue(value: unknown): string {
+  if (Array.isArray(value)) return value.join(', ');
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (value === null || value === undefined) return '—';
+  return String(value);
+}
+
+/** Convert a snake_case or camelCase key to Title Case for display. */
+export function humanizeKey(key: string): string {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/([A-Z])/g, ' $1')
+    .split(' ')
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
 }

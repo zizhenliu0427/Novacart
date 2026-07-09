@@ -1,0 +1,13 @@
+# Dockerfile for running frontend unit tests
+FROM node:20-alpine
+WORKDIR /app
+
+# Install dependencies (ignoring local package-lock is fine to auto-pull vitest)
+COPY frontend/package.json ./
+RUN npm install
+
+# Copy source and config
+COPY frontend/ ./
+
+# Run Vitest in non-watch mode
+CMD ["npm", "run", "test"]

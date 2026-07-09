@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Novacart.Api.Models.Dtos.Products;
+using Novacart.Api.Services;
 
 namespace Novacart.Api.Controllers;
 
@@ -6,31 +8,45 @@ namespace Novacart.Api.Controllers;
 [Route("api/[controller]")]
 public class ProductsController : ControllerBase
 {
-    /// <summary>
-    /// Get all products (placeholder — will connect to Square API later)
-    /// </summary>
-    [HttpGet]
-    public IActionResult GetAll()
-    {
-        var products = new[]
-        {
-            new { Id = 1, Name = "Handmade Ceramic Mug", Price = 24.99m, Category = "Ceramics", Description = "A beautiful handmade ceramic mug." },
-            new { Id = 2, Name = "Wooden Cutting Board", Price = 39.99m, Category = "Woodwork", Description = "Premium walnut cutting board." },
-            new { Id = 3, Name = "Linen Tote Bag", Price = 19.99m, Category = "Textiles", Description = "Eco-friendly linen tote bag." },
-            new { Id = 4, Name = "Scented Soy Candle", Price = 14.99m, Category = "Home", Description = "Lavender scented soy candle." },
-            new { Id = 5, Name = "Leather Wallet", Price = 49.99m, Category = "Accessories", Description = "Hand-stitched leather wallet." }
-        };
+    private readonly IProductService _products;
 
-        return Ok(products);
+    public ProductsController(IProductService products) => _products = products;
+
+    /// <summary>
+    /// List products with optional keyword search, category filter, sort, and pagination.
+    /// </summary>
+    /// <param name="q">Keyword search (name + description, case-insensitive).</param>
+    /// <param name="categoryId">Filter by category ID.</param>
+    /// <param name="sort">Sort order: newest (default), price_asc, price_desc, name_asc.</param>
+    /// <param name="page">1-based page number.</param>
+    /// <param name="pageSize">Items per page (max 100).</param>
+    [HttpGet]
+    [ProducesResponseType(typeof(PagedResult<ProductListItemDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAll(
+        [FromQuery] string? q,
+        [FromQuery] int? categoryId,
+        [FromQuery] string? sort,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
+    {
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        page = Math.Max(page, 1);
+        return Ok(await _products.GetAllAsync(q, categoryId, sort, page, pageSize));
     }
 
-    /// <summary>
-    /// Get product by ID
-    /// </summary>
-    [HttpGet("{id}")]
-    public IActionResult GetById(int id)
+    /// <summary>Get a single product's full detail (includes metadata for the attribute table).</summary>
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(ProductDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetById(Guid id)
     {
-        var product = new { Id = id, Name = "Sample Product", Price = 29.99m, Category = "General", Description = "A sample product." };
-        return Ok(product);
+        try
+        {
+            return Ok(await _products.GetByIdAsync(id));
+        }
+        catch (AppException ex)
+        {
+            return Problem(detail: ex.Message, statusCode: ex.StatusCode);
+        }
     }
 }

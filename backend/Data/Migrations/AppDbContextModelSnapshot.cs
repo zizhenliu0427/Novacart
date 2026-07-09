@@ -22,6 +22,62 @@ namespace Novacart.Api.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Novacart.Api.Models.Entities.Cart", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SessionId")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SessionId")
+                        .HasDatabaseName("idx_carts_session_id");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("idx_carts_user_id");
+
+                    b.ToTable("carts", (string)null);
+                });
+
+            modelBuilder.Entity("Novacart.Api.Models.Entities.CartItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("AddedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CartId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CartId");
+
+                    b.HasIndex("ProductId");
+
+                    b.ToTable("cart_items", (string)null);
+                });
+
             modelBuilder.Entity("Novacart.Api.Models.Entities.Category", b =>
                 {
                     b.Property<int>("Id")
@@ -55,6 +111,43 @@ namespace Novacart.Api.Data.Migrations
                         .HasDatabaseName("idx_categories_slug");
 
                     b.ToTable("categories", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            DisplayOrder = 1,
+                            Name = "Electronics",
+                            Slug = "electronics"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            DisplayOrder = 2,
+                            Name = "Apparel",
+                            Slug = "apparel"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            DisplayOrder = 3,
+                            Name = "Home & Living",
+                            Slug = "home-living"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            DisplayOrder = 4,
+                            Name = "Accessories",
+                            Slug = "accessories"
+                        },
+                        new
+                        {
+                            Id = 5,
+                            DisplayOrder = 5,
+                            Name = "Books",
+                            Slug = "books"
+                        });
                 });
 
             modelBuilder.Entity("Novacart.Api.Models.Entities.Order", b =>
@@ -145,6 +238,140 @@ namespace Novacart.Api.Data.Migrations
                     b.ToTable("order_items", (string)null);
                 });
 
+            modelBuilder.Entity("Novacart.Api.Models.Entities.Payment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("PaymentMethodId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProviderTransactionId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("RawResponse")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId");
+
+                    b.HasIndex("PaymentMethodId");
+
+                    b.ToTable("payments", (string)null);
+                });
+
+            modelBuilder.Entity("Novacart.Api.Models.Entities.PaymentMethod", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Config")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("idx_payment_methods_code");
+
+                    b.ToTable("payment_methods", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Code = "stripe",
+                            DisplayName = "Credit / Debit Card",
+                            IsActive = true
+                        });
+                });
+
+            modelBuilder.Entity("Novacart.Api.Models.Entities.PaymentWebhook", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("text");
+
+                    b.Property<string>("EventId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("PaymentMethodId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("Processed")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("ProcessedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId")
+                        .IsUnique()
+                        .HasDatabaseName("idx_payment_webhooks_event_id");
+
+                    b.HasIndex("PaymentMethodId");
+
+                    b.ToTable("payment_webhooks", (string)null);
+                });
+
             modelBuilder.Entity("Novacart.Api.Models.Entities.Product", b =>
                 {
                     b.Property<Guid>("Id")
@@ -204,6 +431,200 @@ namespace Novacart.Api.Data.Migrations
                         .HasDatabaseName("idx_products_slug");
 
                     b.ToTable("products", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("11111111-0000-0000-0000-000000000001"),
+                            CategoryId = 1,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Currency = "AUD",
+                            Description = "Premium over-ear headphones with 30-hour battery and adaptive noise cancellation for immersive listening.",
+                            IsActive = true,
+                            Metadata = "{\"brand\":\"SoundPro\",\"connectivity\":\"Bluetooth 5.3\",\"battery_hours\":30,\"weight_g\":250,\"color\":\"Midnight Black\",\"frequency_response\":\"20Hz–20kHz\",\"driver_size_mm\":40}",
+                            Name = "Wireless Noise-Cancelling Headphones",
+                            Price = 199.99m,
+                            Slug = "wireless-noise-cancelling-headphones",
+                            StockQuantity = 45,
+                            Tags = new[] { "audio", "wireless", "noise-cancelling", "bluetooth" },
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("11111111-0000-0000-0000-000000000002"),
+                            CategoryId = 1,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Currency = "AUD",
+                            Description = "QHD IPS panel with 144Hz refresh rate, 1ms response time, and USB-C power delivery for creatives and gamers.",
+                            IsActive = true,
+                            Metadata = "{\"brand\":\"ViewMax\",\"resolution\":\"3440x1440\",\"refresh_rate_hz\":144,\"panel_type\":\"IPS\",\"response_time_ms\":1,\"ports\":\"2x HDMI, 1x DisplayPort, 2x USB-C\",\"size_inches\":34}",
+                            Name = "34\" Ultrawide Curved Monitor",
+                            Price = 649.00m,
+                            Slug = "ultrawide-curved-monitor-34",
+                            StockQuantity = 12,
+                            Tags = new[] { "monitor", "ultrawide", "gaming", "usb-c" },
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("11111111-0000-0000-0000-000000000003"),
+                            CategoryId = 1,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Currency = "AUD",
+                            Description = "Compact TKL layout with hot-swap switches, per-key RGB, and aluminium top plate. Cherry MX Red switches included.",
+                            IsActive = true,
+                            Metadata = "{\"brand\":\"KeyForge\",\"layout\":\"TKL (80%)\",\"switch_type\":\"Cherry MX Red\",\"backlight\":\"Per-key RGB\",\"connectivity\":\"USB-C detachable\",\"material\":\"Aluminium top plate\",\"hot_swap\":true}",
+                            Name = "Tenkeyless Mechanical Keyboard",
+                            Price = 149.95m,
+                            Slug = "mechanical-keyboard-tkl",
+                            StockQuantity = 30,
+                            Tags = new[] { "keyboard", "mechanical", "rgb", "gaming", "compact" },
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("11111111-0000-0000-0000-000000000004"),
+                            CategoryId = 2,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Currency = "AUD",
+                            Description = "100% Australian merino wool — naturally temperature-regulating, itch-free, and machine washable. A wardrobe staple.",
+                            IsActive = true,
+                            Metadata = "{\"material\":\"100% Australian Merino Wool\",\"sizes\":[\"XS\",\"S\",\"M\",\"L\",\"XL\",\"XXL\"],\"colors\":[\"Oatmeal\",\"Navy\",\"Forest Green\",\"Charcoal\"],\"fit\":\"Regular\",\"care\":\"Machine wash cold, lay flat to dry\",\"origin\":\"Australia\"}",
+                            Name = "Merino Wool Crew-Neck Sweater",
+                            Price = 89.00m,
+                            Slug = "merino-wool-crew-neck-sweater",
+                            StockQuantity = 80,
+                            Tags = new[] { "wool", "merino", "knitwear", "sustainable", "unisex" },
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("11111111-0000-0000-0000-000000000005"),
+                            CategoryId = 2,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Currency = "AUD",
+                            Description = "Stretch-cotton chinos with a clean slim silhouette — smart enough for the office, comfortable enough for the weekend.",
+                            IsActive = true,
+                            Metadata = "{\"material\":\"97% Cotton, 3% Elastane\",\"sizes\":[\"28\",\"30\",\"32\",\"34\",\"36\",\"38\"],\"inseam_options\":[\"30\\\"\",\"32\\\"\",\"34\\\"\"],\"colors\":[\"Stone\",\"Navy\",\"Olive\",\"Charcoal\"],\"fit\":\"Slim\",\"care\":\"Machine wash 30°C\"}",
+                            Name = "Slim-Fit Chino Pants",
+                            Price = 69.99m,
+                            Slug = "slim-fit-chino-pants",
+                            StockQuantity = 120,
+                            Tags = new[] { "pants", "chino", "slim-fit", "smart-casual" },
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("11111111-0000-0000-0000-000000000006"),
+                            CategoryId = 3,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Currency = "AUD",
+                            Description = "Three artisan soy-wax candles in a gift-ready box — Cedar & Amber, Linen & Sea Salt, and Bergamot & White Tea.",
+                            IsActive = true,
+                            Metadata = "{\"wax_type\":\"100% natural soy\",\"burn_time_hours\":35,\"scents\":[\"Cedar & Amber\",\"Linen & Sea Salt\",\"Bergamot & White Tea\"],\"container\":\"Glass tumbler\",\"weight_g\":200,\"wick\":\"Cotton braided\",\"quantity_in_pack\":3}",
+                            Name = "Hand-Poured Soy Candle Set (3-pack)",
+                            Price = 49.95m,
+                            Slug = "hand-poured-soy-candle-set",
+                            StockQuantity = 60,
+                            Tags = new[] { "candle", "soy-wax", "gift", "scented", "handmade" },
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("11111111-0000-0000-0000-000000000007"),
+                            CategoryId = 3,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Currency = "AUD",
+                            Description = "Handcrafted from sustainably sourced Australian black walnut. Juice groove, hanging hole, and oiled finish included.",
+                            IsActive = true,
+                            Metadata = "{\"material\":\"Solid Australian Black Walnut\",\"dimensions_cm\":\"40 x 25 x 2\",\"finish\":\"Food-safe mineral oil\",\"features\":[\"Juice groove\",\"Hanging hole\"],\"care\":\"Hand wash only, re-oil monthly\",\"origin\":\"Australia\"}",
+                            Name = "Solid Walnut Serving Board",
+                            Price = 75.00m,
+                            Slug = "walnut-serving-board",
+                            StockQuantity = 25,
+                            Tags = new[] { "wood", "walnut", "kitchen", "serving", "handmade", "sustainable" },
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("11111111-0000-0000-0000-000000000008"),
+                            CategoryId = 3,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Currency = "AUD",
+                            Description = "Pre-washed French linen that gets softer with every wash. Breathable and naturally thermoregulating for year-round comfort.",
+                            IsActive = true,
+                            Metadata = "{\"material\":\"100% French Linen\",\"size\":\"Queen (210x210cm)\",\"colors\":[\"White\",\"Sage\",\"Dusk Blue\",\"Natural\"],\"thread_count\":\"N/A (woven linen)\",\"care\":\"Machine wash 40°C, tumble dry low\",\"pillowcases_included\":2}",
+                            Name = "Stonewashed Linen Duvet Cover — Queen",
+                            Price = 189.00m,
+                            Slug = "linen-duvet-cover-queen",
+                            StockQuantity = 18,
+                            Tags = new[] { "linen", "bedding", "duvet", "sustainable", "french-linen" },
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("11111111-0000-0000-0000-000000000009"),
+                            CategoryId = 4,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Currency = "AUD",
+                            Description = "Hand-stitched full-grain cowhide wallet with 6 card slots, a bill compartment, and RFID-blocking lining.",
+                            IsActive = true,
+                            Metadata = "{\"material\":\"Full-grain cowhide leather\",\"card_slots\":6,\"has_bill_compartment\":true,\"rfid_blocking\":true,\"colors\":[\"Tan\",\"Dark Brown\",\"Black\"],\"dimensions_cm\":\"9.5 x 11 (open)\",\"weight_g\":65}",
+                            Name = "Full-Grain Leather Bi-Fold Wallet",
+                            Price = 64.95m,
+                            Slug = "full-grain-leather-wallet",
+                            StockQuantity = 55,
+                            Tags = new[] { "leather", "wallet", "accessories", "rfid", "handmade" },
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("11111111-0000-0000-0000-000000000010"),
+                            CategoryId = 4,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Currency = "AUD",
+                            Description = "12oz natural canvas tote with reinforced stitching, internal zip pocket, and a padded laptop sleeve up to 14\".",
+                            IsActive = true,
+                            Metadata = "{\"material\":\"12oz natural cotton canvas\",\"laptop_sleeve\":\"Up to 14\\\"\",\"internal_pockets\":2,\"external_pockets\":1,\"shoulder_strap_drop_cm\":28,\"capacity_litres\":20,\"colors\":[\"Natural\",\"Black\",\"Olive\"]}",
+                            Name = "Heavy-Canvas Tote Bag",
+                            Price = 39.00m,
+                            Slug = "canvas-tote-bag-natural",
+                            StockQuantity = 90,
+                            Tags = new[] { "tote", "canvas", "sustainable", "laptop", "everyday" },
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("11111111-0000-0000-0000-000000000011"),
+                            CategoryId = 5,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Currency = "AUD",
+                            Description = "The classic guide to software craftsmanship — updated for modern development with new topics, tips, and exercises.",
+                            IsActive = true,
+                            Metadata = "{\"author\":\"David Thomas, Andrew Hunt\",\"publisher\":\"Pragmatic Bookshelf\",\"edition\":\"20th Anniversary\",\"pages\":352,\"isbn\":\"978-0135957059\",\"format\":[\"Paperback\",\"eBook\"],\"language\":\"English\",\"year\":2019}",
+                            Name = "The Pragmatic Programmer (20th Anniversary Ed.)",
+                            Price = 59.95m,
+                            Slug = "the-pragmatic-programmer-20th",
+                            StockQuantity = 40,
+                            Tags = new[] { "programming", "software", "career", "bestseller" },
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("11111111-0000-0000-0000-000000000012"),
+                            CategoryId = 5,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Currency = "AUD",
+                            Description = "James Clear's #1 bestseller on building good habits and breaking bad ones — backed by science and packed with practical strategies.",
+                            IsActive = true,
+                            Metadata = "{\"author\":\"James Clear\",\"publisher\":\"Random House Business\",\"pages\":320,\"isbn\":\"978-1847941831\",\"format\":[\"Paperback\",\"Hardcover\",\"eBook\",\"Audiobook\"],\"language\":\"English\",\"year\":2018}",
+                            Name = "Atomic Habits",
+                            Price = 29.99m,
+                            Slug = "atomic-habits",
+                            StockQuantity = 100,
+                            Tags = new[] { "self-help", "habits", "productivity", "bestseller" },
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        });
                 });
 
             modelBuilder.Entity("Novacart.Api.Models.Entities.Role", b =>
@@ -307,6 +728,35 @@ namespace Novacart.Api.Data.Migrations
                     b.ToTable("user_roles", (string)null);
                 });
 
+            modelBuilder.Entity("Novacart.Api.Models.Entities.Cart", b =>
+                {
+                    b.HasOne("Novacart.Api.Models.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Novacart.Api.Models.Entities.CartItem", b =>
+                {
+                    b.HasOne("Novacart.Api.Models.Entities.Cart", "Cart")
+                        .WithMany("Items")
+                        .HasForeignKey("CartId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Novacart.Api.Models.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Cart");
+
+                    b.Navigation("Product");
+                });
+
             modelBuilder.Entity("Novacart.Api.Models.Entities.Category", b =>
                 {
                     b.HasOne("Novacart.Api.Models.Entities.Category", "Parent")
@@ -347,6 +797,36 @@ namespace Novacart.Api.Data.Migrations
                     b.Navigation("Product");
                 });
 
+            modelBuilder.Entity("Novacart.Api.Models.Entities.Payment", b =>
+                {
+                    b.HasOne("Novacart.Api.Models.Entities.Order", "Order")
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Novacart.Api.Models.Entities.PaymentMethod", "PaymentMethod")
+                        .WithMany()
+                        .HasForeignKey("PaymentMethodId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Order");
+
+                    b.Navigation("PaymentMethod");
+                });
+
+            modelBuilder.Entity("Novacart.Api.Models.Entities.PaymentWebhook", b =>
+                {
+                    b.HasOne("Novacart.Api.Models.Entities.PaymentMethod", "PaymentMethod")
+                        .WithMany()
+                        .HasForeignKey("PaymentMethodId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("PaymentMethod");
+                });
+
             modelBuilder.Entity("Novacart.Api.Models.Entities.Product", b =>
                 {
                     b.HasOne("Novacart.Api.Models.Entities.Category", "Category")
@@ -374,6 +854,11 @@ namespace Novacart.Api.Data.Migrations
                     b.Navigation("Role");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Novacart.Api.Models.Entities.Cart", b =>
+                {
+                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("Novacart.Api.Models.Entities.Category", b =>

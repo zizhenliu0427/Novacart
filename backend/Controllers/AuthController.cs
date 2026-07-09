@@ -62,4 +62,12 @@ public class AuthController : ControllerBase
             Roles = User.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray(),
         });
     }
+
+    /// <summary>
+    /// Logout — with Bearer tokens the client simply discards the token.
+    /// This endpoint exists for symmetry and future HttpOnly-cookie migration.
+    /// </summary>
+    [HttpPost("logout")]
+    [Authorize]
+    public IActionResult Logout() => Ok(new { message = "Logged out successfully." });
 }

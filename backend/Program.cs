@@ -8,7 +8,13 @@ using Novacart.Api.Data;
 using Novacart.Api.Services;
 using StackExchange.Redis;
 
+using Novacart.Api.Services.Payments;
+using Stripe;
+
 var builder = WebApplication.CreateBuilder(args);
+
+// Initialize Stripe API Key
+StripeConfiguration.ApiKey = builder.Configuration["Stripe:SecretKey"];
 
 // ── Services ──────────────────────────────────────────────
 
@@ -26,6 +32,11 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
 // Application services
 builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IProductService, Novacart.Api.Services.ProductService>();
+builder.Services.AddScoped<ICartService, CartService>();
+builder.Services.AddScoped<IOrderService, OrderService>();
+builder.Services.AddScoped<IPaymentStrategy, StripePaymentStrategy>();
+builder.Services.AddScoped<IPaymentService, PaymentService>();
 
 // JWT authentication
 JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear(); // keep "sub"/"email" claim names intact

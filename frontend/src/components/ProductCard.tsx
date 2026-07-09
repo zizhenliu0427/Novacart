@@ -1,19 +1,46 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { CartIcon } from '@/components/icons';
 import { formatPrice, type Product } from '@/types/product';
+import { useAuth } from '@/contexts/AuthContext';
+import { useCart } from '@/contexts/CartContext';
 
 /**
  * Category-agnostic product card — no vertical-specific ornament, works for any
- * product type. Image is a neutral placeholder until real imagery/S3 lands.
+ * product type. Image is a neutral placeholder until real imagery lands.
  */
 export function ProductCard({ product }: { product: Product }) {
+  const { user } = useAuth();
+  const { addItem } = useCart();
+  const router = useRouter();
+  const [adding, setAdding] = useState(false);
+
   const onSale =
     typeof product.compareAtPrice === 'number' && product.compareAtPrice > product.price;
+
+  const outOfStock = product.stockQuantity === 0;
+
+  async function handleAddToCart(e: React.MouseEvent) {
+    e.preventDefault(); // don't follow Link
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+    setAdding(true);
+    try {
+      await addItem(product.id, 1);
+    } catch {
+      // Silently fail here — errors are surfaced on the cart page.
+    } finally {
+      setAdding(false);
+    }
+  }
 
   return (
     <Card interactive className="flex flex-col overflow-hidden">
@@ -27,11 +54,16 @@ export function ProductCard({ product }: { product: Product }) {
               <Badge tone="sale">Sale</Badge>
             </span>
           )}
+          {outOfStock && (
+            <span className="absolute right-3 top-3">
+              <Badge tone="danger">Out of stock</Badge>
+            </span>
+          )}
         </div>
 
         <div className="flex flex-1 flex-col gap-2 p-4">
           <span className="text-xs font-medium uppercase tracking-wide text-ink-muted">
-            {product.category}
+            {product.categoryName ?? product.tags?.[0] ?? ''}
           </span>
           <h3 className="line-clamp-2 font-semibold leading-snug text-ink">{product.name}</h3>
           <p className="line-clamp-2 text-sm text-ink-muted">{product.description}</p>
@@ -50,9 +82,14 @@ export function ProductCard({ product }: { product: Product }) {
               </span>
             )}
           </div>
-          <Button size="sm" aria-label={`Add ${product.name} to cart`}>
+          <Button
+            size="sm"
+            aria-label={`Add ${product.name} to cart`}
+            onClick={handleAddToCart}
+            disabled={outOfStock || adding}
+          >
             <CartIcon className="h-4 w-4" />
-            Add
+            {adding ? '…' : 'Add'}
           </Button>
         </div>
       </div>
