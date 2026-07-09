@@ -28,3 +28,6 @@ Thumbs.db
 # Docker volumes (local data)
 postgres_data/
 redis_data/
+
+# Local-only compose override (machine-specific port remaps)
+docker-compose.override.yml
