@@ -31,15 +31,7 @@ public class OrdersController : ControllerBase
     {
         page = Math.Max(page, 1);
         pageSize = Math.Clamp(pageSize, 1, 50);
-
-        try
-        {
-            return Ok(await _orders.GetOrdersAsync(GetUserId(), page, pageSize));
-        }
-        catch (AppException ex)
-        {
-            return Problem(ex.Message, statusCode: ex.StatusCode);
-        }
+        return Ok(await _orders.GetOrdersAsync(GetUserId(), page, pageSize));
     }
 
     /// <summary>Get detailed line items for a specific order.</summary>
@@ -47,14 +39,5 @@ public class OrdersController : ControllerBase
     [ProducesResponseType(typeof(OrderDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetOrderById(Guid id)
-    {
-        try
-        {
-            return Ok(await _orders.GetOrderByIdAsync(GetUserId(), id));
-        }
-        catch (AppException ex)
-        {
-            return Problem(ex.Message, statusCode: ex.StatusCode);
-        }
-    }
+        => Ok(await _orders.GetOrderByIdAsync(GetUserId(), id));
 }

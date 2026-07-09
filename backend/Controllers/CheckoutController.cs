@@ -29,36 +29,21 @@ public class CheckoutController : ControllerBase
     [ProducesResponseType(typeof(CheckoutResponseDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> CreateCheckout([FromBody] CheckoutRequest request)
     {
-        try
-        {
-            var result = await _payment.ProcessCheckoutAsync(GetUserId(), request, "stripe");
-            return Ok(result);
-        }
-        catch (AppException ex)
-        {
-            return Problem(ex.Message, statusCode: ex.StatusCode);
-        }
+        var result = await _payment.ProcessCheckoutAsync(GetUserId(), request, "stripe");
+        return Ok(result);
     }
 
     /// <summary>Webhook listener for Stripe checkout events.</summary>
+    /// <remarks>
+    /// Signature/processing failures are surfaced via the global exception handler;
+    /// Stripe receives a non-2xx and retries the event.
+    /// </remarks>
     [HttpPost("webhook/stripe")]
     public async Task<IActionResult> StripeWebhook()
     {
         var json = await new StreamReader(HttpContext.Request.Body).ReadToEndAsync();
-        var signature = Request.Headers["Stripe-Signature"];
-
-        try
-        {
-            await _payment.HandleWebhookAsync("stripe", json, signature);
-            return Ok();
-        }
-        catch (AppException ex)
-        {
-            return Problem(ex.Message, statusCode: ex.StatusCode);
-        }
-        catch (Exception ex)
-        {
-            return Problem(ex.Message, statusCode: StatusCodes.Status500InternalServerError);
-        }
+        var signature = Request.Headers["Stripe-Signature"].ToString();
+        await _payment.HandleWebhookAsync("stripe", json, signature);
+        return Ok();
     }
 }

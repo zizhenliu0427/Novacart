@@ -39,14 +39,5 @@ public class ProductsController : ControllerBase
     [ProducesResponseType(typeof(ProductDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id)
-    {
-        try
-        {
-            return Ok(await _products.GetByIdAsync(id));
-        }
-        catch (AppException ex)
-        {
-            return Problem(detail: ex.Message, statusCode: ex.StatusCode);
-        }
-    }
+        => Ok(await _products.GetByIdAsync(id));
 }

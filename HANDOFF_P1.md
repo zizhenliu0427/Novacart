@@ -1,24 +1,22 @@
-# Novacart — P1 (MVP) Handoff & TODO
+# Novacart — Handoff & Roadmap
 
-> **Purpose of this file.** A self-contained handoff so another AI/developer can continue building or auditing
-> the Priority-1 MVP without re-discovering context. It records what is already done, how to run the
-> project, the conventions to follow, the frontend design system to build against, and a
-> feature-by-feature implementation plan with a flat checklist.
+> **Purpose of this file.** A self-contained handoff so another AI/developer can continue building or
+> auditing Novacart without re-discovering context. It records what is already done, how to run the
+> project, the conventions to follow, the frontend design system to build against, and the
+> **Priority 2 (P2)** feature-by-feature implementation plan with a flat checklist.
 >
-> Last updated: 2026-07-09 (Session 3 - Complete). Scope: **Priority 1 — MVP Core Features** completed.
+> **Status:** Priority 1 (MVP) is **complete & verified**. This file now orients toward **Priority 2**.
+>
+> Last updated: 2026-07-10 — P1 complete; global exception handling added; P2 plan written.
 
 ---
 
 ## 0. TL;DR for whoever picks this up
 
-- Backend: ASP.NET Core 8 + EF Core + PostgreSQL + Redis. Frontend: Next.js 14 (App Router) + TS + Tailwind.
-- **Priority 1 (MVP) is 100% completed and verified.**
-- **Auth (register / login / JWT)**: Complete frontend & backend flows. Next.js middleware guards protected routes.
-- **Product browsing**: DB-backed list with paginated search/filter/sorting. Details page displays dynamic specs table from `metadata` jsonb.
-- **Shopping cart**: Full CRUD with stock validation, React CartContext, and cart page.
-- **Checkout & Stripe Payment**: Wires cart to Stripe Checkout redirect. Webhook handles signature verification, webhook idempotency log, order/payment transition, inventory decrement, and cart clearing.
-- **Order history**: Expansion card displays historical purchases with frozen snapshotted pricing.
-- **Testing**: 41 backend tests (xUnit) and 12 frontend tests (Vitest) all running containerized in Docker.
+- **Stack:** Backend ASP.NET Core 8 + EF Core + PostgreSQL + Redis. Frontend Next.js 14 (App Router) + TS + Tailwind.
+- **Priority 1 (MVP) is 100% completed and verified** — the 5 core features (auth, products, cart, checkout, orders) all work end-to-end.
+- **P1 polish pass done:** global exception handling middleware (controllers no longer need try/catch), token-key bug fixed, category filter wired to backend, shared `Input` component, unified 400 validation format, type de-duplication.
+- **Priority 2 is the current focus.** The schema is already future-proofed for most P2 features (6-state order workflow, guest-cart columns) — see §7.
 - **Everything runs in Docker** — one command: `docker compose up --build -d`.
 
 ---
@@ -41,17 +39,22 @@
 | ProductService + DTOs (paginated list with ILike search, category filter, 4 sort modes, detail with metadata) | ✅ | [backend/Services/ProductService.cs](backend/Services/ProductService.cs), [backend/Models/Dtos/Products/ProductDtos.cs](backend/Models/Dtos/Products/ProductDtos.cs) |
 | ProductsController (DB-backed, search/filter/sort/pagination) | ✅ | [backend/Controllers/ProductsController.cs](backend/Controllers/ProductsController.cs) |
 | GetEffectivePrice / ResolvePrice seam (P1 = pass-through, ready for P2 dynamic pricing) | ✅ | `ProductService.ResolvePrice` (static) |
+| **Global exception handling** (`GlobalExceptionHandler` → ProblemDetails; maps AppException/AuthException/UnauthorizedAccessException) | ✅ | [backend/Services/GlobalExceptionHandler.cs](backend/Services/GlobalExceptionHandler.cs), [backend/Program.cs](backend/Program.cs) |
+| **Unified 400 validation format** (RFC 7807 ValidationProblemDetails) | ✅ | `Program.cs` `ConfigureApiBehaviorOptions` |
 | Shared AppException (message + HTTP status, factories: NotFound, Conflict, Forbidden) | ✅ | [backend/Services/AppException.cs](backend/Services/AppException.cs) |
 | CartService + CartController (full CRUD: get, add with merge + stock check, update qty, remove, clear) | ✅ | [backend/Services/CartService.cs](backend/Services/CartService.cs), [backend/Controllers/CartController.cs](backend/Controllers/CartController.cs) |
 | **PaymentService + CheckoutController** (ProcessCheckout, Strategy-pattern Stripe integration, webhook processing, signature verify, event log idempotency) | ✅ | [backend/Services/Payments/](backend/Services/Payments/), [backend/Controllers/CheckoutController.cs](backend/Controllers/CheckoutController.cs) |
 | **OrderService + OrdersController** (GetOrders, GetOrderById with user ownership check) | ✅ | [backend/Services/OrderService.cs](backend/Services/OrderService.cs), [backend/Controllers/OrdersController.cs](backend/Controllers/OrdersController.cs) |
-| Frontend: products list page (paginated, debounced search, sort dropdown, category chip filter, loading skeletons) | ✅ | [frontend/src/app/products/page.tsx](frontend/src/app/products/page.tsx) |
+| Frontend: products list page (paginated, debounced search, sort dropdown, **server-side category chip filter**, loading skeletons) | ✅ | [frontend/src/app/products/page.tsx](frontend/src/app/products/page.tsx) |
 | Frontend: product detail page (dynamic metadata attribute table, stock badges, tags, add-to-cart) | ✅ | [frontend/src/app/products/[id]/page.tsx](frontend/src/app/products/[id]/page.tsx) |
 | Frontend: CartContext + useCart (loads on auth, addItem/updateItem/removeItem) | ✅ | [frontend/src/contexts/CartContext.tsx](frontend/src/contexts/CartContext.tsx) |
 | Frontend: full cart page (quantity stepper, remove, low stock warning, order summary, Stripe redirect trigger) | ✅ | [frontend/src/app/cart/page.tsx](frontend/src/app/cart/page.tsx) |
 | **Frontend: checkout pages** (success transaction detail page, payment cancel redirect page) | ✅ | [frontend/src/app/checkout/](frontend/src/app/checkout/) |
 | **Frontend: Order History page** (expandable cards with lazy-loaded item receipts, status badges, frozen pricing) | ✅ | [frontend/src/app/orders/page.tsx](frontend/src/app/orders/page.tsx) |
 | Frontend: HeaderNav with user menu, live cart badge count | ✅ | [frontend/src/components/HeaderNav.tsx](frontend/src/components/HeaderNav.tsx) |
+| Frontend: shared `Input` component (label/error/helperText/3 sizes) wired into login/register/products | ✅ | [frontend/src/components/ui/Input.tsx](frontend/src/components/ui/Input.tsx) |
+| Frontend: token-key bug fixed — `apiCall` 401 path now calls `clearToken()` (clears correct localStorage key + auth cookie) | ✅ | [frontend/src/lib/api.ts](frontend/src/lib/api.ts) |
+| Frontend: shared `order.ts` types (de-duplicated from inline interfaces) | ✅ | [frontend/src/types/order.ts](frontend/src/types/order.ts) |
 | **Backend Unit Tests** (41 tests using xUnit & InMemory DB for Auth, Products, Cart, Orders, and Payments) | ✅ | [backend.Tests/](backend.Tests/) |
 | **Frontend Unit Tests** (12 tests using Vitest for helper formatting/parsing logic) | ✅ | [frontend/src/types/product.test.ts](frontend/src/types/product.test.ts) |
 | **Containerized Test Configurations** (`Dockerfile.backend.test`, `Dockerfile.frontend.test`, `vitest.config.ts`) | ✅ | Root & [frontend/vitest.config.ts](frontend/vitest.config.ts) |
@@ -62,7 +65,7 @@
 
 **Verified behaviour:**
 - Auth: register -> auto-login -> JWT issued; login -> JWT; JWT validated on route change; middleware guards `/cart`, `/orders`.
-- Products: Search (`q`), Category Chips filter, Sort by newest/price/name. Detail page renders specifications table.
+- Products: Search (`q`), Category Chips filter (server-side `categoryId`), Sort by newest/price/name. Detail page renders specifications table.
 - Cart: Add item, merge quantities, stepper modification, removal. Recalculates subtotal and item count badge.
 - Checkout: Proceeding to checkout creates a pending order, initiates Stripe session, redirects. Completion webhook verified idempotently via unique index.
 - Order History: Order page lists chronological purchases. Expanding card lazy-loads receipts from backend and renders frozen purchase pricing.
@@ -107,11 +110,11 @@ docker run --rm novacart-frontend-test
 ## 3. Architecture & conventions (follow these)
 
 **Layering:** `Controller → Service → Entity` (add a `Mapper`/DTO-projection step as things grow).
-- Controllers: thin. Parse request, call a service, translate `Exception → HTTP`. No business logic, no EF queries.
+- Controllers: thin. Parse request, call a service. **No business logic, no EF queries, no try/catch** — the global exception handler maps `AppException`/`AuthException`/`UnauthorizedAccessException` to ProblemDetails.
 - Services: all business logic + EF access. Interface + impl (e.g. `IAuthService`/`AuthService`), registered in DI.
 - DTOs live in `backend/Models/Dtos/**`. **Never** return EF entities from controllers.
 
-**Error handling pattern (established):** throw `AppException`(message, statusCode) or its static factories (`AppException.NotFound()`, `.Conflict()`, `.Forbidden()`) and have the controller map it via `Problem(detail, statusCode)`.
+**Error handling pattern (established):** Services throw `AppException`(message, statusCode) or its static factories (`AppException.NotFound()`, `.Conflict()`, `.Forbidden()`); auth throws `AuthException`(message, statusCode). The `GlobalExceptionHandler` (`IExceptionHandler`, registered in `Program.cs` + `app.UseExceptionHandler()`) converts these to consistent ProblemDetails. Controllers just `return Ok(...)`.
 
 **EF / DB conventions (established):**
 - Table names: snake_case via `ToTable("...")`. Guid PKs for User/Product/Order/Cart/CartItem/Payment; int PKs for Role/Category/PaymentMethod.
@@ -134,106 +137,171 @@ The tone is deliberately **neutral, content-first, and adaptable**: a clean, tru
 
 ---
 
-## 5. P1 implementation outline (feature by feature)
+## 5. P1 (MVP) implementation — COMPLETE ✅
 
-Legend: 🟢 done · 🟡 partial · 🔴 not started.
+All five MVP features are done. Recorded here for reference; the active work is P2 (§7).
 
-### Feature 1 — User Registration & Login — 🟢 DONE
-- Login/register pages using the design system.
-- `useAuth` hook + `AuthContext`: stores token in localStorage, exposes `user`, `login()`, `register()`, `logout()`. Re-hydrates via `/auth/me`.
-- Next.js middleware route guard (`middleware.ts`) protects pages `/cart`, `/checkout`, `/orders`.
-- Header user menu shows dropdown when logged in.
-
-### Feature 2 — Product Browsing — 🟢 DONE
-- 12 seed products across **5 categories and multiple product types**, with dynamic specifications table from metadata jsonb.
-- `ProductService` paginated list with keyword ILike search, category filter, 4 sort modes.
-- ProductCard quick add-to-cart button.
-
-### Feature 3 — Shopping Cart — 🟢 DONE
-- `Cart` + `CartItem` entities. CartService implements crud with stock boundaries.
-- `CartContext` + `useCart` hook. Cart page with stepper, remove, subtotal recalculations.
-
-### Feature 4 — Checkout & Stripe Payment — 🟢 DONE
-- `PaymentMethod`, `Payment`, `PaymentWebhook` entities.
-- Strategy pattern for payment gateway: `IPaymentStrategy` -> `StripePaymentStrategy`.
-- `PaymentService.ProcessCheckoutAsync` creates pending orders and logs pending transactions.
-- Stripe webhook processor `PaymentService.HandleWebhookAsync` verifies signatures and logs webhook payloads inside a DB transaction. Prevents duplicate event triggers using unique index. Deducts stock and clears user cart upon success.
-- Success and cancel frontend routes displaying references and card links.
-
-### Feature 5 — Order History — 🟢 DONE
-- `OrderService` fetches paginated order history and detailed items with owner checks.
-- Order history page lists chronological orders with status badges (`Paid`, `Pending`, `Cancelled`).
-- Expansion card lazy-loads receipts and shows snapshotted frozen prices at purchase time.
+1. **User Registration & Login** — login/register pages, `useAuth` hook + `AuthContext` (token in localStorage + `novacart_authed` flag cookie for Edge middleware), route guard. ✅
+2. **Product Browsing** — 12 seed products / 5 categories, server-side search + category filter + 4 sort modes, dynamic specs table from metadata jsonb. ✅
+3. **Shopping Cart** — `Cart`/`CartItem` entities, CartService CRUD with stock boundaries, `CartContext` + cart page. ✅
+4. **Checkout & Stripe Payment** — `PaymentMethod`/`Payment`/`PaymentWebhook` entities, Strategy-pattern provider, `ProcessCheckoutAsync` (pending order + Stripe session), `HandleWebhookAsync` (signature verify + idempotent unique index + transactional stock decrement + cart clear). ✅
+5. **Order History** — `OrderService` with ownership checks, expandable cards with lazy-loaded receipts and frozen pricing. ✅
 
 ---
 
-## 6. P14-specific requirements beyond the 5 MVP features (priority-tagged)
+## 6. P14 requirements coverage map
 
-The P14 spec ([P14_Modern_Ecommerce_Web_App.md](P14_Modern_Ecommerce_Web_App.md)) asks for more than the 5 core MVP features. These are mapped to priority tiers.
+The P14 spec ([P14_Modern_Ecommerce_Web_App.md](P14_Modern_Ecommerce_Web_App.md)) asks for more than the 5 core MVP features. This maps every requirement to a priority tier.
 
 | P14 requirement | Priority | Status | Notes / where it lands |
 |---|---|---|---|
-| **Product type-specific attributes** | **P1** | ✅ DONE | Implemented: dynamic Specifications table from `Product.Metadata` (jsonb). |
-| **RBAC** — 3 roles with access control | P2 | 🟡 | Roles seeded + claims in JWT. Missing: `[Authorize(Roles=...)]` on admin endpoints + a 403 path. |
-| **Customer profile management** | P2 | 🔴 | `GET/PUT /api/users/me` for profile edit. |
-| **Wishlist** | P2 | 🔴 | `Wishlist` entity (user_id, product_id, added_at) + UI toggle. |
-| **Guest cart + merge on login** | P2 (basic) / P3 (Redis) | 🟡 | Schema supports this (Cart has nullable `user_id` + `session_id`). Needs merge logic in CartService. |
-| **Sorting** (with search/filter) | **P1** | ✅ DONE | Implemented: sorting by newest, price, name. |
-| **Dynamic pricing / pricing rules** | P2 (model) / P3 (engine) | 🟡 | Price seam established (`ResolvePrice`). P1 is pass-through. P2 replaces body with rule-based logic. |
-| **Email order confirmation** | P2 | 🔴 | Background service + SMTP. |
-| **Shipping info + delivery status** | P2 | 🔴 | Address capture + admin delivery updates. |
-| **Order status workflow** | P2 | 🟡 | `Order.CurrentStatus` is in place. Missing admin transition controller. |
-| **Admin dashboard** | P2 | 🔴 | Product/Inventory/Order CRUD panel. |
-| **Analytics dashboard** | P2 | 🔴 | ECharts sales dashboard. |
-| **PWA** | P2 | 🟡 | manifest.webmanifest + icons done. Service Worker missing. |
+| **Product type-specific attributes** | **P1** | ✅ DONE | Dynamic Specifications table from `Product.Metadata` (jsonb). |
+| **Sorting** (with search/filter) | **P1** | ✅ DONE | Sorting by newest, price, name. |
+| **RBAC** — 3 roles with access control | **P2** | 🔴 TODO | Roles seeded + claims in JWT. Missing: `[Authorize(Roles=...)]` on admin endpoints + a 403 path. See P2-1. |
+| **Customer profile management** | **P2** | 🔴 TODO | `GET/PUT /api/users/me` for profile edit. See P2-2. |
+| **Wishlist** | **P2** | 🔴 TODO | `Wishlist` entity (user_id, product_id, added_at) + UI toggle. See P2-3. |
+| **Guest cart + merge on login** | **P2** | 🟡 SCHEMA-READY | `Cart` already has nullable `UserId` + `SessionId`. Missing: merge logic in CartService. See P2-4. |
+| **Dynamic pricing / pricing rules** | **P2** | 🟡 SEAM-READY | `ProductService.ResolvePrice` is a static pass-through today. P2 replaces the body with rule-based logic. See P2-5. |
+| **Email order confirmation** | **P2** | 🔴 TODO | Background service + SMTP. See P2-6. |
+| **Shipping info + delivery status** | **P2** | 🔴 TODO | Address capture + admin delivery updates. See P2-7. |
+| **Order status workflow** | **P2** | 🟡 SCHEMA-READY | `Order.CurrentStatus` + full 6-state enum (`OrderStatuses`) in place. Missing admin transition controller. See P2-7. |
+| **Admin dashboard** (product/inventory/order CRUD) | **P2** | 🔴 TODO | See P2-8. |
+| **Analytics dashboard** | **P2** | 🔴 TODO | ECharts sales dashboard. See P2-9. |
+| **PWA** (service worker) | **P2** | 🟡 PARTIAL | `manifest.webmanifest` + icons done. Service Worker missing. See P2-10. |
+| Test coverage (components/contexts) | **P2** | 🔴 TODO | Only pure-function tests exist (41 BE / 12 FE). See P2-11. |
 
 ---
 
-## 7. Flat TODO checklist
+## 7. P2 implementation outline (feature by feature)
 
-**Foundation / cross-cutting**
-- [x] Introduce a shared `AppException`(message, statusCode) + a controller/exception-handling helper (generalise the `AuthException` pattern).
-- [x] Add global validation error shaping (consistent 400 body).
-- [x] Frontend: design tokens (globals.css light + dark via `prefers-color-scheme`) + tailwind mapping + Inter font + base components (Button, Card, Badge, ProductCard, EmptyState).
-- [x] Frontend: add an `Input` component (needed for auth/search forms) to complete the base set.
-- [x] Frontend: `useAuth` + `useCart` contexts/hooks; wire `apiCall` token injection.
+Legend: 🟢 done · 🟡 partial · 🔴 not started. **All 🔴 below.**
 
-**Frontend shell polish**
-- [x] Favicon + maskable icon + PWA web manifest.
-- [x] Styled `not-found.tsx` (404), route-level `loading.tsx`, and `error.tsx`.
-- [x] `ProductCard` links to `products/[id]`; product detail route added.
-- [x] Wire the "Add to cart" button to `useCart`.
+> **Ordering note:** P2-1 (RBAC) and P2-8 (Admin dashboard CRUD) are foundational — most other P2
+> items (order status workflow, dynamic pricing config, analytics) are exercised *through* admin
+> endpoints. Build P2-1 + P2-8 first.
 
-**Feature 1 — Auth (DONE ✅)**
-- [x] Login page, Register page (design system).
-- [x] Auth context + persisted token + header user menu + logout.
-- [x] Next.js middleware route guard for protected routes.
-- [x] `POST /api/auth/logout` endpoint.
+### P2-1 — RBAC (Role-Based Access Control) — 🔴
+**Goal:** Enforce the 3 seeded roles (`customer` / `admin` / `sysadmin`) at the endpoint level.
+- Roles are already seeded and carried as JWT claims. What's missing is enforcement.
+- [ ] Add `[Authorize(Roles = "admin,sysadmin")]` to all admin endpoints created in P2-8.
+- [ ] Verify the `GlobalExceptionHandler` returns 403 for `AppException.Forbidden()` (it does — confirm by test).
+- [ ] Frontend: hide admin UI behind a role check (`useAuth().user.roles`); gate `/admin/*` routes in `middleware.ts`.
+- [ ] Seed a second test user with `admin` role for manual verification.
+- [ ] Tests: add an authorization test fixture (authenticated-as-admin vs customer asserting 403).
 
-**Feature 2 — Products (DONE ✅)**
-- [x] Seed real products + categories across multiple product types with populated metadata.
-- [x] `ProductService` + DTOs; DB-backed list and detail.
-- [x] Search + category filter + sorting.
-- [x] `GetEffectivePrice()` / `ResolvePrice()` price seam.
-- [x] Product list page + ProductCard.
-- [x] Product detail page with dynamic metadata table.
+### P2-2 — Customer Profile Management — 🔴
+**Goal:** Let customers view and edit their own profile (name, and later address/password).
+- [ ] `GET /api/users/me` → current user profile DTO.
+- [ ] `PUT /api/users/me` → update full name (email change needs a verification flow — defer).
+- [ ] `UserService` + `IUserService` in DI; `UsersController`.
+- [ ] Frontend: `/account` (or `/profile`) page with the shared `Input` component + a form.
+- [ ] Tests: `UserServiceTests` (update persists, rejects invalid input).
 
-**Feature 3 — Cart (DONE ✅)**
-- [x] `Cart` + `CartItem` entities + migration.
-- [x] `CartService` + 4 cart endpoints.
-- [x] Cart page with quantity stepper, removal, subtotal.
+### P2-3 — Wishlist — 🔴
+**Goal:** Persist a per-user wishlist; toggle from product detail/card.
+- [ ] `Wishlist` entity: `{ Id, UserId, ProductId, AddedAt }` + unique index on `(UserId, ProductId)`.
+- [ ] Migration `AddWishlist`.
+- [ ] `WishlistService`: `GetAsync`, `AddAsync`, `RemoveAsync`; `WishlistController` (`GET /api/wishlist`, `POST /api/wishlist/items`, `DELETE /api/wishlist/items/{productId}`).
+- [ ] Frontend: `WishlistContext` + `/wishlist` page + heart toggle on `ProductCard` / product detail.
+- [ ] Tests: `WishlistServiceTests` (add, remove, dedupe, ownership).
 
-**Feature 4 — Checkout & Stripe (DONE ✅)**
-- [x] `Payment` + `PaymentMethod` + `PaymentWebhook` entities + migration; seed `stripe`.
-- [x] `POST /api/checkout` (create order + Stripe session), Strategy-pattern provider.
-- [x] `POST /api/checkout/webhook/stripe` (idempotent, signature-verified, order→paid, clear cart, deduct stock).
-- [x] Success and cancel checkout landing pages.
+### P2-4 — Guest Cart + Merge on Login — 🔴 (schema-ready)
+**Goal:** Anonymous users get a cart keyed by `SessionId`; on login it merges into their user cart.
+- The `Cart` entity **already** supports this: nullable `UserId` + `SessionId`. No migration needed.
+- [ ] `CartService.GetCartAsync`: resolve by `SessionId` when no user, by `UserId` when authenticated.
+- [ ] Identify guests via a `novacart_session` cookie (set in middleware or on first cart action).
+- [ ] `MergeGuestCartOnLoginAsync(sessionId, userId)`: copy/sum guest `CartItem` quantities into the user cart, then delete the guest cart.
+- [ ] Call merge from the login flow (after JWT issued, before returning).
+- [ ] Frontend: load cart by session for guests; after login, refetch.
+- [ ] Tests: `CartServiceTests` merge cases (disjoint items, overlapping with quantity sum, empty guest cart).
 
-**Feature 5 — Orders (DONE ✅)**
-- [x] `OrderService`; `GET /api/orders`, `GET /api/orders/{id}` (ownership validated).
-- [x] Expandable Orders list displaying snapshotted frozen prices.
+### P2-5 — Dynamic Pricing / Pricing Rules — 🔴 (seam-ready)
+**Goal:** Admin-configured pricing rules (discount %, flat-off, sale price) applied at price-read time.
+- **The seam already exists:** `ProductService.ResolvePrice(Product)` is the single chokepoint. Today it returns `product.Price` verbatim.
+- [ ] New entities: `PriceRule { Id, ProductId?, CategoryId?, RuleType (percent/flat/fixed), Value, StartsAt, EndsAt, IsActive }`.
+- [ ] Migration `AddPriceRules`.
+- [ ] Replace `ResolvePrice` body: load applicable active rules and compute effective price. Keep it **static-safe** for EF LINQ (pre-materialise, then apply) — or move rule resolution into the service query path.
+- [ ] Admin endpoints to CRUD price rules (P2-8).
+- [ ] Display effective vs original price (strikethrough) on ProductCard / detail.
+- [ ] **Order snapshot stays frozen** — `OrderItem.PriceAtPurchase` already snapshots at checkout, so historical orders are unaffected. Verify this.
+- [ ] Tests: `ProductServiceTests` for rule application (percent, expired rule ignored, most-specific wins).
 
-**Polish / P1 exit criteria**
-- [x] End-to-end happy path: register → browse → add to cart → checkout (test card) → see order in history.
-- [x] All pages responsive (4→3→2→1 grid, rem units) and on the design system.
-- [x] Basic tests: xUnit service tests (auth, cart, products, orders, payments) + Vitest helper tests (formatters, parsers) fully containerized in Docker.
+### P2-6 — Email Order Confirmation — 🔴
+**Goal:** Send a confirmation email when an order transitions to Paid (webhook success).
+- [ ] Background option: a `BackgroundService` that dequeues "order paid" events, OR send inline in the webhook completion path. Prefer a queue/`Channel<T>` to keep the webhook fast.
+- [ ] SMTP integration via `MailKit` (configure host/credentials in `appsettings`).
+- [ ] Trigger: inside `PaymentService.ExecutePaymentCompletionAsync` after `order.CurrentStatus = Paid`.
+- [ ] Templated HTML email with order number, items, totals.
+- [ ] `appsettings` sections: `Smtp:Host`, `:Port`, `:User`, `:Pass`, `:From`.
+- [ ] Tests: mock SMTP; assert email fired once per paid order.
+
+### P2-7 — Shipping Info + Order Status Workflow — 🔴 (schema-ready)
+**Goal:** Capture shipping address; let admin advance order status through the full lifecycle.
+- `OrderStatuses` **already** defines the full P14 workflow: `pending → paid → processing → shipped → completed (+ cancelled)`.
+- [ ] `ShippingAddress` value object or entity: `{ OrderId, Line1, Line2, City, State, Postcode, Country }` (or reuse a user Address entity).
+- [ ] Capture address at checkout (extend `CheckoutRequest`).
+- [ ] Admin order-status controller: `PATCH /api/admin/orders/{id}/status` (guarded by P2-1 RBAC) with allowed-transition validation.
+- [ ] Optional: webhook publishes status changes so P2-6 can email shipping updates.
+- [ ] Frontend: order detail shows shipping address + current status timeline; admin can advance status.
+- [ ] Tests: transition validation (illegal jumps rejected), ownership checks.
+
+### P2-8 — Admin Dashboard (Product / Inventory / Order CRUD) — 🔴
+**Goal:** Admin-facing management surface. **Build alongside P2-1** (RBAC) since these are the protected endpoints.
+- [ ] `AdminProductsController`: `POST`/`PUT`/`DELETE /api/admin/products` (create, edit price/stock/description, deactivate).
+- [ ] Inventory tracking via existing `Product.StockQuantity` (admin can adjust + see low-stock).
+- [ ] `AdminOrdersController`: list all orders, view, update status (calls P2-7 transition logic).
+- [ ] Frontend: `/admin` section — product table (CRUD), inventory view, order management. Use the design system.
+- [ ] All endpoints under `[Authorize(Roles = "admin,sysadmin")]`.
+- [ ] Tests: admin-only access (403 for customers), CRUD happy paths.
+
+### P2-9 — Analytics Dashboard — 🔴
+**Goal:** Sales analytics for admins (totals, orders/day, revenue, best-sellers).
+- [ ] `AnalyticsService`: aggregate queries over Orders/OrderItems (total sales, orders per day, revenue summary, top products).
+- [ ] `GET /api/admin/analytics/summary`, `.../sales-over-time`, `.../best-sellers` (RBAC-guarded).
+- [ ] Frontend: ECharts on the `/admin` dashboard (already in the planned stack).
+- [ ] Tests: aggregation correctness with seeded orders.
+
+### P2-10 — PWA Service Worker — 🔴 (partial)
+**Goal:** Installable, offline-capable PWA.
+- `manifest.webmanifest` + icons already done.
+- [ ] Add a Service Worker (`sw.js`) for offline shell + cache-first strategy (Next.js: use `next-pwa` or a manual `public/sw.js` registered in `layout.tsx`).
+- [ ] Cache static assets + product list; network-first for API.
+- [ ] Verify installability + standalone mode (Lighthouse PWA audit).
+- [ ] Add to tests: at minimum a build check that `sw.js` is emitted.
+
+### P2-11 — Test Coverage Expansion — 🔴
+**Goal:** Beyond pure-function tests, cover components, contexts, and HTTP integration.
+- [ ] Frontend: component tests (Vitest + React Testing Library) for `ProductCard`, `Button`, `Input`, cart stepper logic.
+- [ ] Frontend: `AuthContext` / `CartContext` integration tests (mock `apiCall`, assert state transitions).
+- [ ] Backend: add `WebApplicationFactory`-based integration tests (full HTTP round-trip) for auth + checkout flows — currently tests are service-level only.
+- [ ] Raise coverage gating if a CI pipeline is added.
+
+---
+
+## 8. Flat P2 TODO checklist
+
+**Cross-cutting / foundational (do these first)**
+- [ ] P2-1 RBAC: `[Authorize(Roles=...)]` on admin endpoints + frontend role gating + middleware `/admin/*` guard.
+- [ ] P2-8 Admin CRUD endpoints + frontend `/admin` section (built together with P2-1).
+- [ ] Frontend: add an `admin` seed user for manual verification.
+
+**Features**
+- [ ] P2-2 Profile: `UsersController` `GET/PUT /api/users/me` + `/account` page.
+- [ ] P2-3 Wishlist: `Wishlist` entity + migration + service/controller + `WishlistContext` + `/wishlist` page + heart toggle.
+- [ ] P2-4 Guest cart: session cookie + `CartService` session resolution + `MergeGuestCartOnLoginAsync`.
+- [ ] P2-5 Dynamic pricing: `PriceRule` entity + migration + `ResolvePrice` body + admin CRUD + strikethrough UI.
+- [ ] P2-6 Email: background sender + SMTP config + trigger on Paid + template.
+- [ ] P2-7 Shipping + status workflow: address capture + `PATCH /api/admin/orders/{id}/status` + status timeline UI.
+- [ ] P2-9 Analytics: `AnalyticsService` + endpoints + ECharts dashboard.
+- [ ] P2-10 PWA: Service Worker + offline shell + Lighthouse pass.
+
+**Quality**
+- [ ] P2-11 Tests: frontend component/context tests (RTL) + backend `WebApplicationFactory` integration tests.
+- [ ] Optional: CI pipeline (GitHub Actions) running both test suites containerized.
+
+---
+
+## 9. Tech-debt / housekeeping notes (non-blocking, opportunistic)
+
+- `AuthException` is a separate class from `AppException` with an identical shape (message + `StatusCode`). They could be unified (`AuthException : AppException`) for simplicity, but both are already handled by `GlobalExceptionHandler`, so this is cosmetic.
+- `docker-compose.override.yml` is intentionally not committed (machine-local port remap to avoid clashes with another stack on 3000/5432/6379).

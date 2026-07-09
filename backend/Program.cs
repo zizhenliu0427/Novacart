@@ -60,6 +60,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization();
 
+// Global exception handling — maps AppException/AuthException/etc. to ProblemDetails
+// so controllers don't need try/catch. Registered before controllers.
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
+
 // Controllers + Swagger (with Bearer auth support)
 builder.Services.AddControllers()
     .ConfigureApiBehaviorOptions(options =>
@@ -114,6 +119,10 @@ if (app.Environment.IsDevelopment())
 }
 
 // ── Middleware ─────────────────────────────────────────────
+
+// First in the pipeline — catches exceptions thrown by anything downstream
+// and hands them to GlobalExceptionHandler for a clean ProblemDetails response.
+app.UseExceptionHandler();
 
 app.UseSwagger();
 app.UseSwaggerUI();

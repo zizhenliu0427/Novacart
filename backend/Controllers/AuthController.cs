@@ -19,31 +19,13 @@ public class AuthController : ControllerBase
     [HttpPost("register")]
     [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
-    {
-        try
-        {
-            return Ok(await _auth.RegisterAsync(request));
-        }
-        catch (AuthException ex)
-        {
-            return Problem(detail: ex.Message, statusCode: ex.StatusCode);
-        }
-    }
+        => Ok(await _auth.RegisterAsync(request));
 
     /// <summary>Login with email + password and return a JWT.</summary>
     [HttpPost("login")]
     [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
-    {
-        try
-        {
-            return Ok(await _auth.LoginAsync(request));
-        }
-        catch (AuthException ex)
-        {
-            return Problem(detail: ex.Message, statusCode: ex.StatusCode);
-        }
-    }
+        => Ok(await _auth.LoginAsync(request));
 
     /// <summary>Return the currently authenticated user (proves the JWT works).</summary>
     [HttpGet("me")]

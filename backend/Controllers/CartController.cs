@@ -27,35 +27,23 @@ public class CartController : ControllerBase
     [HttpGet]
     [ProducesResponseType(typeof(CartDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetCart()
-    {
-        try { return Ok(await _cart.GetCartAsync(GetUserId())); }
-        catch (AppException ex) { return Problem(ex.Message, statusCode: ex.StatusCode); }
-    }
+        => Ok(await _cart.GetCartAsync(GetUserId()));
 
     /// <summary>Add a product to the cart (merges if already present).</summary>
     [HttpPost("items")]
     [ProducesResponseType(typeof(CartDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> AddItem([FromBody] AddCartItemRequest request)
-    {
-        try { return Ok(await _cart.AddItemAsync(GetUserId(), request)); }
-        catch (AppException ex) { return Problem(ex.Message, statusCode: ex.StatusCode); }
-    }
+        => Ok(await _cart.AddItemAsync(GetUserId(), request));
 
     /// <summary>Update the quantity of a cart item (set to 0 to remove).</summary>
     [HttpPut("items/{id:guid}")]
     [ProducesResponseType(typeof(CartDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> UpdateItem(Guid id, [FromBody] UpdateCartItemRequest request)
-    {
-        try { return Ok(await _cart.UpdateItemAsync(GetUserId(), id, request)); }
-        catch (AppException ex) { return Problem(ex.Message, statusCode: ex.StatusCode); }
-    }
+        => Ok(await _cart.UpdateItemAsync(GetUserId(), id, request));
 
     /// <summary>Remove a specific cart item.</summary>
     [HttpDelete("items/{id:guid}")]
     [ProducesResponseType(typeof(CartDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> RemoveItem(Guid id)
-    {
-        try { return Ok(await _cart.RemoveItemAsync(GetUserId(), id)); }
-        catch (AppException ex) { return Problem(ex.Message, statusCode: ex.StatusCode); }
-    }
+        => Ok(await _cart.RemoveItemAsync(GetUserId(), id));
 }
