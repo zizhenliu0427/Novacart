@@ -26,4 +26,7 @@ public static class RoleNames
     public const int CustomerId = 1;
     public const int AdminId = 2;
     public const int SysAdminId = 3;
+
+    /// <summary>Comma-separated roles for `[Authorize(Roles = RoleNames.AdminRoles)]` on admin endpoints (P2-1).</summary>
+    public const string AdminRoles = Admin + "," + SysAdmin;
 }

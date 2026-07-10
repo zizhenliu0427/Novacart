@@ -20,6 +20,11 @@ public class AppDbContext : DbContext
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<PaymentWebhook> PaymentWebhooks => Set<PaymentWebhook>();
 
+    // ── P2 scaffold (see HANDOFF §7 / §13) ──
+    public DbSet<WishlistItem> WishlistItems => Set<WishlistItem>();
+    public DbSet<PriceRule> PriceRules => Set<PriceRule>();
+    public DbSet<UserAddress> UserAddresses => Set<UserAddress>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -199,6 +204,59 @@ public class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(w => w.PaymentMethodId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ── P2 scaffold entities (bodies/logic TODO — see HANDOFF §7) ──
+        // ── WishlistItem (P2-3) ────────────────────────────────
+        modelBuilder.Entity<WishlistItem>(e =>
+        {
+            e.ToTable("wishlist_items");
+            e.HasIndex(w => new { w.UserId, w.ProductId })
+                .IsUnique().HasDatabaseName("idx_wishlist_user_product");
+            e.HasOne(w => w.User)
+                .WithMany()
+                .HasForeignKey(w => w.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(w => w.Product)
+                .WithMany()
+                .HasForeignKey(w => w.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── PriceRule (P2-5) ───────────────────────────────────
+        modelBuilder.Entity<PriceRule>(e =>
+        {
+            e.ToTable("price_rules");
+            e.Property(r => r.RuleType).HasConversion<string>().HasMaxLength(20);
+            e.Property(r => r.Value).HasPrecision(18, 2);
+            e.HasIndex(r => r.ProductId).HasDatabaseName("idx_price_rules_product_id");
+            e.HasIndex(r => r.CategoryId).HasDatabaseName("idx_price_rules_category_id");
+            e.HasOne(r => r.Product)
+                .WithMany()
+                .HasForeignKey(r => r.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(r => r.Category)
+                .WithMany()
+                .HasForeignKey(r => r.CategoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── UserAddress (P2-7) ─────────────────────────────────
+        modelBuilder.Entity<UserAddress>(e =>
+        {
+            e.ToTable("user_addresses");
+            e.Property(a => a.Label).HasMaxLength(50);
+            e.Property(a => a.Line1).HasMaxLength(200).IsRequired();
+            e.Property(a => a.Line2).HasMaxLength(200);
+            e.Property(a => a.City).HasMaxLength(100);
+            e.Property(a => a.State).HasMaxLength(100);
+            e.Property(a => a.Postcode).HasMaxLength(20);
+            e.Property(a => a.Country).HasMaxLength(100);
+            e.HasIndex(a => a.UserId).HasDatabaseName("idx_user_addresses_user_id");
+            e.HasOne(a => a.User)
+                .WithMany()
+                .HasForeignKey(a => a.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // ── Seed data ──────────────────────────────────────────

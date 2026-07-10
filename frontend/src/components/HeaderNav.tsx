@@ -98,6 +98,32 @@ export function HeaderNav() {
                           <p className="truncate text-xs text-ink-muted">{user.email}</p>
                         </div>
                         <div className="my-1 border-t border-border" />
+                        {[
+                          { href: '/account', label: 'Account' },
+                          { href: '/wishlist', label: 'Wishlist' },
+                          { href: '/orders', label: 'Orders' },
+                        ].map((l) => (
+                          <Link
+                            key={l.href}
+                            href={l.href}
+                            role="menuitem"
+                            onClick={() => setMenuOpen(false)}
+                            className="block rounded-lg px-3 py-2 text-sm text-ink-muted transition hover:bg-bg-subtle hover:text-ink"
+                          >
+                            {l.label}
+                          </Link>
+                        ))}
+                        {user.roles?.some((r) => r === 'admin' || r === 'sysadmin') && (
+                          <Link
+                            href="/admin"
+                            role="menuitem"
+                            onClick={() => setMenuOpen(false)}
+                            className="block rounded-lg px-3 py-2 text-sm font-medium text-accent transition hover:bg-accent-weak"
+                          >
+                            Admin dashboard
+                          </Link>
+                        )}
+                        <div className="my-1 border-t border-border" />
                         <button
                           id="logout-button"
                           role="menuitem"

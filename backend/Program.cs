@@ -39,6 +39,12 @@ builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<IPaymentStrategy, StripePaymentStrategy>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 
+// P2 scaffold services (stub bodies — see HANDOFF §7 / §13)
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IWishlistService, WishlistService>();
+builder.Services.AddScoped<IPricingService, PricingService>();
+builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
+
 // JWT authentication
 JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear(); // keep "sub"/"email" claim names intact
 var jwtSecret = builder.Configuration["Jwt:Secret"]

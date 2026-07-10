@@ -19,4 +19,8 @@ public class AppException : Exception
 
     public static AppException Forbidden(string detail = "Access denied.") =>
         new(detail, StatusCodes.Status403Forbidden);
+
+    /// <summary>P2 scaffold: endpoint/service exists but its body isn't implemented yet.</summary>
+    public static AppException NotImplemented(string detail = "Not implemented yet.") =>
+        new(detail, StatusCodes.Status501NotImplemented);
 }

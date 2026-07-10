@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
-/** Routes that require authentication. */
-const PROTECTED = ['/orders', '/cart', '/checkout'];
+/** Routes that require authentication. (Admin also does a client-side role check in /admin/layout.) */
+const PROTECTED = ['/orders', '/cart', '/checkout', '/account', '/wishlist', '/admin'];
 
 /** Routes that should redirect to home when already authenticated. */
 const AUTH_ONLY = ['/login', '/register'];
@@ -37,5 +37,14 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/orders/:path*', '/cart/:path*', '/checkout/:path*', '/login', '/register'],
+  matcher: [
+    '/orders/:path*',
+    '/cart/:path*',
+    '/checkout/:path*',
+    '/account/:path*',
+    '/wishlist/:path*',
+    '/admin/:path*',
+    '/login',
+    '/register',
+  ],
 };

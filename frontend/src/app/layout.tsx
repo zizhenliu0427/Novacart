@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { CartProvider } from '@/contexts/CartContext';
+import { WishlistProvider } from '@/contexts/WishlistContext';
 import { HeaderNav } from '@/components/HeaderNav';
 
 const inter = Inter({
@@ -30,15 +31,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen">
         <AuthProvider>
           <CartProvider>
-            <HeaderNav />
+            <WishlistProvider>
+              <HeaderNav />
 
-            <main className="mx-auto max-w-content px-4 py-8 sm:px-6">{children}</main>
+              <main className="mx-auto max-w-content px-4 py-8 sm:px-6">{children}</main>
 
-            <footer className="mt-16 border-t border-border">
-              <div className="mx-auto max-w-content px-4 py-8 text-sm text-ink-muted sm:px-6">
-                © {new Date().getFullYear()} Novacart · A modern e-commerce demo.
-              </div>
-            </footer>
+              <footer className="mt-16 border-t border-border">
+                <div className="mx-auto max-w-content px-4 py-8 text-sm text-ink-muted sm:px-6">
+                  © {new Date().getFullYear()} Novacart · A modern e-commerce demo.
+                </div>
+              </footer>
+            </WishlistProvider>
           </CartProvider>
         </AuthProvider>
       </body>
