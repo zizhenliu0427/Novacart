@@ -1,4 +1,6 @@
+using Microsoft.EntityFrameworkCore;
 using Novacart.Api.Data;
+using Novacart.Api.Models.Entities;
 
 namespace Novacart.Api.Services;
 
@@ -14,20 +16,64 @@ public interface IWishlistService
 }
 
 /// <summary>
-/// SCAFFOLD STUB — throws 501 until implemented. Fill in with `WishlistItems` CRUD
-/// (dedupe on the unique (UserId, ProductId) index; project to <see cref="WishlistItemDto"/>).
+/// P2-3: per-user wishlist backed by the <c>wishlist_items</c> table. Dedupe is enforced
+/// by the unique <c>(UserId, ProductId)</c> index in <c>AppDbContext</c>.
 /// </summary>
 public class WishlistService : IWishlistService
 {
     private readonly AppDbContext _db;
     public WishlistService(AppDbContext db) => _db = db;
 
-    public Task<IReadOnlyList<WishlistItemDto>> GetAsync(Guid userId) =>
-        throw AppException.NotImplemented("P2-3: GET /api/wishlist not implemented yet.");
+    public async Task<IReadOnlyList<WishlistItemDto>> GetAsync(Guid userId)
+    {
+        return await _db.WishlistItems
+            .Include(w => w.Product)
+            .Where(w => w.UserId == userId && w.Product.IsActive)
+            .OrderByDescending(w => w.AddedAt)
+            .Select(w => new WishlistItemDto(
+                w.ProductId,
+                w.Product.Name,
+                w.Product.Slug,
+                w.Product.Price,
+                w.AddedAt))
+            .ToListAsync();
+    }
 
-    public Task AddAsync(Guid userId, Guid productId) =>
-        throw AppException.NotImplemented("P2-3: POST /api/wishlist/items not implemented yet.");
+    public async Task AddAsync(Guid userId, Guid productId)
+    {
+        // Verify the product exists and is active.
+        if (!await _db.Products.AnyAsync(p => p.Id == productId && p.IsActive))
+            throw AppException.NotFound("Product");
 
-    public Task RemoveAsync(Guid userId, Guid productId) =>
-        throw AppException.NotImplemented("P2-3: DELETE /api/wishlist/items/{productId} not implemented yet.");
+        // Idempotent: if already wishlisted, do nothing.
+        if (await _db.WishlistItems.AnyAsync(w => w.UserId == userId && w.ProductId == productId))
+            return;
+
+        _db.WishlistItems.Add(new WishlistItem
+        {
+            UserId = userId,
+            ProductId = productId,
+            AddedAt = DateTime.UtcNow,
+        });
+
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // Race condition: unique index may reject a concurrent insert — treat as success.
+        }
+    }
+
+    public async Task RemoveAsync(Guid userId, Guid productId)
+    {
+        var item = await _db.WishlistItems
+            .FirstOrDefaultAsync(w => w.UserId == userId && w.ProductId == productId);
+
+        if (item is null) return; // idempotent removal
+
+        _db.WishlistItems.Remove(item);
+        await _db.SaveChangesAsync();
+    }
 }

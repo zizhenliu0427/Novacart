@@ -2,4 +2,7 @@ bin/
 obj/
 *.user
 *.suo
+*.pdb
+.vs/
 .vscode/
+.idea/

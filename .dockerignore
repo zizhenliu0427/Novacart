@@ -1,0 +1,64 @@
+# =============================================================================
+# Root .dockerignore — applies to test Dockerfiles (Dockerfile.*.test)
+# whose build context is the repo root. Without this, the build context
+# balloons to ~360 MB (node_modules + .NET build output + .git).
+# Per-directory .dockerignore files also exist under backend/ and frontend/.
+# =============================================================================
+
+# --- VCS ---
+.git
+.gitignore
+.gitattributes
+
+# --- Docs & planning (not needed at build time) ---
+*.md
+HANDOFF_P1.md
+README*.md
+TECH_NOTES*.md
+COMP9900_project_list.md
+GitHub_Issues_by_Sprint.md
+Database_ER_Diagram.md
+P14_Modern_Ecommerce_Web_App.md
+
+# --- .NET build output & caches ---
+**/bin/
+**/obj/
+**/.vs/
+*.user
+*.suo
+
+# --- Node (only present locally; never send to Docker) ---
+**/node_modules/
+**/.next/
+**/.out/
+**/npm-debug.log*
+**/yarn-error.log*
+
+# --- Python (lanely/bili artefacts if co-located; harmless otherwise) ---
+**/__pycache__/
+**/venv/
+**/.venv/
+
+# --- Environment & secrets ---
+.env
+.env.*
+!.env.example
+
+# --- IDE & OS ---
+.vscode/
+.idea/
+.claude/
+.cursor/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# --- Docker meta (avoid recursive context) ---
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+
+# --- Local data volumes ---
+postgres_data/
+redis_data/

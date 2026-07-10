@@ -14,6 +14,7 @@ public class AppDbContext : DbContext
     public DbSet<Product> Products => Set<Product>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+    public DbSet<OrderStatusHistory> OrderStatusHistories => Set<OrderStatusHistory>();
     public DbSet<Cart> Carts => Set<Cart>();
     public DbSet<CartItem> CartItems => Set<CartItem>();
     public DbSet<PaymentMethod> PaymentMethods => Set<PaymentMethod>();
@@ -111,13 +112,27 @@ public class AppDbContext : DbContext
             e.Property(o => o.Subtotal).HasPrecision(18, 2);
             e.Property(o => o.ShippingCost).HasPrecision(18, 2);
             e.Property(o => o.Tax).HasPrecision(18, 2);
-            e.Property(o => o.Total).HasPrecision(18, 2);
+            e.Property(o => o.Total).HasPrecision(18,2);
             e.HasIndex(o => new { o.UserId, o.CurrentStatus, o.CreatedAt })
                 .HasDatabaseName("idx_orders_user_status");
             e.HasOne(o => o.User)
                 .WithMany(u => u.Orders)
                 .HasForeignKey(o => o.UserId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ── OrderStatusHistory (P2-7 audit trail) ─────────────
+        modelBuilder.Entity<OrderStatusHistory>(e =>
+        {
+            e.ToTable("order_status_history");
+            e.Property(h => h.ToStatus).HasMaxLength(30).IsRequired();
+            e.Property(h => h.FromStatus).HasMaxLength(30);
+            e.Property(h => h.Notes).HasMaxLength(500);
+            e.HasIndex(h => h.OrderId).HasDatabaseName("idx_order_status_history_order");
+            e.HasOne(h => h.Order)
+                .WithMany()
+                .HasForeignKey(h => h.OrderId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // ── OrderItem ──────────────────────────────────────────

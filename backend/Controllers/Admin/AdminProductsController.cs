@@ -1,28 +1,62 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Novacart.Api.Models.Dtos.Products;
 using Novacart.Api.Models.Entities;
 using Novacart.Api.Services;
 
 namespace Novacart.Api.Controllers.Admin;
 
-/// <summary>
-/// P2-8 (Admin product/inventory CRUD) — SCAFFOLD. RBAC is REAL: only admin/sysadmin
-/// reach these (customers get 403); the bodies return 501 until implemented. See HANDOFF §7 P2-8.
-/// </summary>
+/// <summary>P2-8 product and inventory management for admin/sysadmin users.</summary>
 [ApiController]
 [Route("api/admin/products")]
 [Authorize(Roles = RoleNames.AdminRoles)]
 public class AdminProductsController : ControllerBase
 {
-    /// <summary>Create a product.</summary>
+    private readonly IAdminProductService _products;
+
+    public AdminProductsController(IAdminProductService products) => _products = products;
+
+    [HttpGet]
+    [ProducesResponseType(typeof(PagedResult<AdminProductDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAll(
+        [FromQuery] string? q,
+        [FromQuery] bool? isActive,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        return Ok(await _products.GetAllAsync(q, isActive, page, pageSize));
+    }
+
+    [HttpGet("categories")]
+    [ProducesResponseType(typeof(IReadOnlyList<CategoryOptionDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetCategories() => Ok(await _products.GetCategoriesAsync());
+
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(AdminProductDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetById(Guid id) => Ok(await _products.GetByIdAsync(id));
+
     [HttpPost]
-    public IActionResult Create() => throw AppException.NotImplemented("P2-8: create product not implemented yet.");
+    [ProducesResponseType(typeof(AdminProductDto), StatusCodes.Status201Created)]
+    public async Task<IActionResult> Create([FromBody] AdminProductUpsertRequest request)
+    {
+        var created = await _products.CreateAsync(request);
+        return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+    }
 
-    /// <summary>Update a product (price / stock / description / active).</summary>
     [HttpPut("{id:guid}")]
-    public IActionResult Update(Guid id) => throw AppException.NotImplemented("P2-8: update product not implemented yet.");
+    [ProducesResponseType(typeof(AdminProductDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> Update(Guid id, [FromBody] AdminProductUpsertRequest request)
+        => Ok(await _products.UpdateAsync(id, request));
 
-    /// <summary>Deactivate / delete a product.</summary>
+    /// <summary>Soft-delete a product by deactivating it.</summary>
     [HttpDelete("{id:guid}")]
-    public IActionResult Delete(Guid id) => throw AppException.NotImplemented("P2-8: delete product not implemented yet.");
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        await _products.DeactivateAsync(id);
+        return NoContent();
+    }
 }

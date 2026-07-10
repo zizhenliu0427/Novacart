@@ -1,4 +1,6 @@
+using Microsoft.EntityFrameworkCore;
 using Novacart.Api.Data;
+using Novacart.Api.Models.Entities;
 
 namespace Novacart.Api.Services;
 
@@ -14,17 +16,44 @@ public interface IUserService
 }
 
 /// <summary>
-/// SCAFFOLD STUB — throws 501 until implemented. Fill in the bodies (load/update the
-/// <c>User</c> via <see cref="AppDbContext"/>, map to <see cref="UserProfileDto"/>).
+/// P2-2: customer profile read/update. Email changes require a verification flow
+/// (deferred), so only <c>FullName</c> is editable for now.
 /// </summary>
 public class UserService : IUserService
 {
     private readonly AppDbContext _db;
     public UserService(AppDbContext db) => _db = db;
 
-    public Task<UserProfileDto> GetProfileAsync(Guid userId) =>
-        throw AppException.NotImplemented("P2-2: GET /api/users/me not implemented yet.");
+    public async Task<UserProfileDto> GetProfileAsync(Guid userId)
+    {
+        var user = await _db.Users
+            .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
+            .FirstOrDefaultAsync(u => u.Id == userId)
+            ?? throw AppException.NotFound("User");
 
-    public Task<UserProfileDto> UpdateProfileAsync(Guid userId, UpdateProfileRequest request) =>
-        throw AppException.NotImplemented("P2-2: PUT /api/users/me not implemented yet.");
+        return Map(user);
+    }
+
+    public async Task<UserProfileDto> UpdateProfileAsync(Guid userId, UpdateProfileRequest request)
+    {
+        var fullName = request.FullName?.Trim();
+        if (string.IsNullOrWhiteSpace(fullName))
+            throw new AppException("Full name is required.");
+
+        var user = await _db.Users
+            .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
+            .FirstOrDefaultAsync(u => u.Id == userId)
+            ?? throw AppException.NotFound("User");
+
+        user.FullName = fullName;
+        await _db.SaveChangesAsync();
+
+        return Map(user);
+    }
+
+    private static UserProfileDto Map(User user) => new(
+        user.Id,
+        user.Email,
+        user.FullName,
+        user.UserRoles.Select(ur => ur.Role.Name).ToList());
 }

@@ -2,9 +2,10 @@
 FROM node:20-alpine
 WORKDIR /app
 
-# Install dependencies (ignoring local package-lock is fine to auto-pull vitest)
-COPY frontend/package.json ./
-RUN npm install
+# Install pinned dependencies from the lockfile (reproducible, fails fast
+# if package.json and package-lock.json drift apart).
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
 
 # Copy source and config
 COPY frontend/ ./

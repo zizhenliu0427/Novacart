@@ -1,27 +1,62 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Novacart.Api.Models.Dtos.Orders;
+using Novacart.Api.Models.Dtos.Products;
 using Novacart.Api.Models.Entities;
 using Novacart.Api.Services;
 
 namespace Novacart.Api.Controllers.Admin;
 
 /// <summary>
-/// P2-7 / P2-8 (Admin order management + status workflow) — SCAFFOLD. RBAC-guarded.
-/// See HANDOFF §7 P2-7 (status transitions) and P2-8.
+/// P2-7 / P2-8: admin order management + status workflow.
+/// RBAC-guarded (admin/sysadmin). Status transitions are validated by
+/// <see cref="AdminOrderService"/>.
 /// </summary>
 [ApiController]
 [Route("api/admin/orders")]
 [Authorize(Roles = RoleNames.AdminRoles)]
 public class AdminOrdersController : ControllerBase
 {
-    /// <summary>List all orders (admin view, paginated + filterable by status).</summary>
+    private readonly IAdminOrderService _orders;
+
+    public AdminOrdersController(IAdminOrderService orders) => _orders = orders;
+
+    private Guid? GetUserId()
+    {
+        var raw = User.FindFirstValue(JwtRegisteredClaimNames.Sub)
+               ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return Guid.TryParse(raw, out var id) ? id : null;
+    }
+
+    /// <summary>List all orders (paginated, filterable by status + free-text search).</summary>
     [HttpGet]
-    public IActionResult List() => throw AppException.NotImplemented("P2-8: admin order list not implemented yet.");
+    [ProducesResponseType(typeof(PagedResult<AdminOrderSummaryDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAll(
+        [FromQuery] string? q,
+        [FromQuery] string? status,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        return Ok(await _orders.GetAllAsync(q, status, page, pageSize));
+    }
 
-    /// <summary>Advance an order's status (validates allowed transitions — see OrderStatuses).</summary>
+    /// <summary>Get a single order with line items.</summary>
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(AdminOrderDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetById(Guid id) => Ok(await _orders.GetByIdAsync(id));
+
+    /// <summary>Advance an order's status (validates allowed transitions).</summary>
     [HttpPatch("{id:guid}/status")]
-    public IActionResult UpdateStatus(Guid id, [FromBody] UpdateOrderStatusRequest request)
-        => throw AppException.NotImplemented("P2-7: order status transition not implemented yet.");
+    [ProducesResponseType(typeof(AdminOrderDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateStatus(Guid id, [FromBody] UpdateOrderStatusRequest request)
+    {
+        var updated = await _orders.UpdateStatusAsync(id, request, GetUserId());
+        return Ok(updated);
+    }
 }
-
-public record UpdateOrderStatusRequest(string ToStatus, string? Notes);

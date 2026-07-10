@@ -22,11 +22,16 @@ public interface IProductService
 public class ProductService : IProductService
 {
     private readonly AppDbContext _db;
+    private readonly IPricingService _pricing;
 
-    public ProductService(AppDbContext db) => _db = db;
+    public ProductService(AppDbContext db, IPricingService pricing)
+    {
+        _db = db;
+        _pricing = pricing;
+    }
 
     // ── Static helper (safe inside EF LINQ expressions) ───────
-    /// <summary>P1 pass-through. P2 dynamic pricing rules replace this body.</summary>
+    /// <summary>Fallback base-price resolver used where dynamic pricing isn't available.</summary>
     public static decimal ResolvePrice(Product product) => product.Price;
 
     public async Task<PagedResult<ProductListItemDto>> GetAllAsync(
@@ -60,25 +65,27 @@ public class ProductService : IProductService
 
         var total = await query.CountAsync();
 
-        // Project in DB; use p.Price directly (EF can translate it).
-        // GetEffectivePrice/ResolvePrice is called after materialisation where needed.
-        var items = await query
+        // Materialise page first, then apply dynamic pricing post-query.
+        var pageItems = await query
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(p => new ProductListItemDto
-            {
-                Id            = p.Id,
-                Slug          = p.Slug,
-                Name          = p.Name,
-                Description   = p.Description,
-                Price         = p.Price,   // P2: swap for resolved price post-query
-                Currency      = p.Currency,
-                StockQuantity = p.StockQuantity,
-                CategoryId    = p.CategoryId,
-                CategoryName  = p.Category != null ? p.Category.Name : null,
-                Tags          = p.Tags,
-            })
             .ToListAsync();
+
+        var activeRules = await LoadActiveRulesAsync(pageItems);
+
+        var items = pageItems.Select(p => new ProductListItemDto
+        {
+            Id            = p.Id,
+            Slug          = p.Slug,
+            Name          = p.Name,
+            Description   = p.Description,
+            Price         = _pricing.ResolveEffectivePrice(p, activeRules),
+            Currency      = p.Currency,
+            StockQuantity = p.StockQuantity,
+            CategoryId    = p.CategoryId,
+            CategoryName  = p.Category != null ? p.Category.Name : null,
+            Tags          = p.Tags,
+        }).ToList();
 
         return new PagedResult<ProductListItemDto>
         {
@@ -96,13 +103,15 @@ public class ProductService : IProductService
             .FirstOrDefaultAsync(p => p.Id == id && p.IsActive)
             ?? throw AppException.NotFound("Product");
 
+        var activeRules = await LoadActiveRulesAsync(new[] { p });
+
         return new ProductDetailDto
         {
             Id            = p.Id,
             Slug          = p.Slug,
             Name          = p.Name,
             Description   = p.Description,
-            Price         = ResolvePrice(p),
+            Price         = _pricing.ResolveEffectivePrice(p, activeRules),
             Currency      = p.Currency,
             StockQuantity = p.StockQuantity,
             CategoryId    = p.CategoryId,
@@ -114,4 +123,29 @@ public class ProductService : IProductService
 
     /// <inheritdoc/>
     public decimal GetEffectivePrice(Product product) => ResolvePrice(product);
+
+    /// <summary>
+    /// Load the pricing rules that could apply to any of the given products:
+    /// product-scoped (by id), category-scoped (by category id), and global.
+    /// </summary>
+    private async Task<IReadOnlyCollection<PriceRule>> LoadActiveRulesAsync(
+        IReadOnlyCollection<Product> products)
+    {
+        var productIds = products.Select(p => p.Id).Distinct().ToList();
+        var categoryIds = products
+            .Select(p => p.CategoryId)
+            .Where(c => c.HasValue)
+            .Select(c => c!.Value)
+            .Distinct()
+            .ToList();
+
+        return await _db.PriceRules
+            .Where(r => r.IsActive &&
+                        ((r.StartsAt == null || r.StartsAt <= DateTime.UtcNow) &&
+                         (r.EndsAt == null || r.EndsAt >= DateTime.UtcNow)) &&
+                        ((r.ProductId != null && productIds.Contains(r.ProductId.Value)) ||
+                         (r.CategoryId != null && categoryIds.Contains(r.CategoryId.Value)) ||
+                         (r.ProductId == null && r.CategoryId == null)))
+            .ToListAsync();
+    }
 }

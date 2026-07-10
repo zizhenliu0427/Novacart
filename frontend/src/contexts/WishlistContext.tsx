@@ -1,14 +1,20 @@
 'use client';
 
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { apiCall } from '@/lib/api';
+import { useAuth } from './AuthContext';
 
-/**
- * P2-3 (Wishlist) — SCAFFOLD context. Holds local state only for now.
- * TODO P2-3: hydrate from `GET /api/wishlist` on auth, and call
- * `POST /api/wishlist/items` / `DELETE /api/wishlist/items/{productId}` in `toggle`.
- */
+interface WishlistItem {
+  productId: string;
+  name: string;
+  slug: string;
+  price: number;
+  addedAt: string;
+}
+
 interface WishlistContextValue {
   productIds: Set<string>;
+  items: WishlistItem[];
   isWishlisted: (productId: string) => boolean;
   toggle: (productId: string) => Promise<void>;
   isLoading: boolean;
@@ -17,24 +23,56 @@ interface WishlistContextValue {
 const WishlistContext = createContext<WishlistContextValue | undefined>(undefined);
 
 export function WishlistProvider({ children }: { children: React.ReactNode }) {
-  const [productIds, setProductIds] = useState<Set<string>>(new Set());
-  const [isLoading] = useState(false);
+  const { token, user } = useAuth();
+  const [items, setItems] = useState<WishlistItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Hydrate the wishlist when the user is authenticated.
+  useEffect(() => {
+    if (!token || !user) {
+      setItems([]);
+      return;
+    }
+    setIsLoading(true);
+    apiCall<WishlistItem[]>('/wishlist', { token })
+      .then(setItems)
+      .catch(() => setItems([]))
+      .finally(() => setIsLoading(false));
+  }, [token, user]);
+
+  const productIds = useMemo(() => new Set(items.map((i) => i.productId)), [items]);
 
   const isWishlisted = useCallback((id: string) => productIds.has(id), [productIds]);
 
   const toggle = useCallback(async (id: string) => {
-    // TODO P2-3: persist via the wishlist API; optimistic local update for now.
-    setProductIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+    if (!token) return;
+    const isAdded = productIds.has(id);
+    // Optimistic update
+    setItems((prev) =>
+      isAdded
+        ? prev.filter((i) => i.productId !== id)
+        : prev,
+    );
+
+    try {
+      if (isAdded) {
+        await apiCall<void>(`/wishlist/items/${id}`, { method: 'DELETE', token });
+      } else {
+        await apiCall<void>('/wishlist/items', { method: 'POST', token, body: { productId: id } });
+        // Re-fetch to get the full item data (name/price/etc.)
+        const refreshed = await apiCall<WishlistItem[]>('/wishlist', { token });
+        setItems(refreshed);
+      }
+    } catch {
+      // Revert optimistic update on failure by re-fetching.
+      const refreshed = await apiCall<WishlistItem[]>('/wishlist', { token }).catch(() => []);
+      setItems(refreshed);
+    }
+  }, [token, productIds]);
 
   const value = useMemo(
-    () => ({ productIds, isWishlisted, toggle, isLoading }),
-    [productIds, isWishlisted, toggle, isLoading],
+    () => ({ productIds, items, isWishlisted, toggle, isLoading }),
+    [productIds, items, isWishlisted, toggle, isLoading],
   );
 
   return <WishlistContext.Provider value={value}>{children}</WishlistContext.Provider>;

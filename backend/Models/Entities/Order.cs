@@ -24,6 +24,9 @@ public class Order
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    /// <summary>When the order (or its status) was last updated.</summary>
+    public DateTime? UpdatedAt { get; set; }
+
     // Navigation
     public ICollection<OrderItem> Items { get; set; } = new List<OrderItem>();
 }

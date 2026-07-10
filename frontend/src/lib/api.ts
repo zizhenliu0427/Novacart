@@ -3,9 +3,16 @@ import { clearToken } from './auth';
 const API_BASE = '/api';
 
 interface ApiOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   token?: string;
+}
+
+interface ApiErrorPayload {
+  message?: string;
+  detail?: string;
+  title?: string;
+  errors?: Record<string, string[]>;
 }
 
 export async function apiCall<T>(endpoint: string, options: ApiOptions = {}): Promise<T> {
@@ -25,8 +32,8 @@ export async function apiCall<T>(endpoint: string, options: ApiOptions = {}): Pr
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  if (res.status === 401 || res.status === 403) {
-    // Auto-logout on auth failure
+  if (res.status === 401) {
+    // An invalid/expired token requires re-authentication.
     if (typeof window !== 'undefined') {
       clearToken();
       window.location.href = '/login';
@@ -34,10 +41,18 @@ export async function apiCall<T>(endpoint: string, options: ApiOptions = {}): Pr
     throw new Error('Authentication failed');
   }
 
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(error.message || 'API request failed');
+  if (res.status === 403) {
+    throw new Error('You do not have permission to perform this action.');
   }
 
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ message: res.statusText })) as ApiErrorPayload;
+    const validationMessage = error.errors
+      ? Object.values(error.errors).flat().join(' ')
+      : undefined;
+    throw new Error(validationMessage || error.detail || error.message || error.title || 'API request failed');
+  }
+
+  if (res.status === 204) return undefined as T;
   return res.json();
 }

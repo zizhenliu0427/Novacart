@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Novacart.Api.Data;
+using Novacart.Api.Models.Entities;
 using Novacart.Api.Services;
 using StackExchange.Redis;
 
@@ -34,6 +35,9 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
 builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IProductService, Novacart.Api.Services.ProductService>();
+builder.Services.AddScoped<IAdminProductService, AdminProductService>();
+builder.Services.AddScoped<IAdminOrderService, AdminOrderService>();
+builder.Services.AddScoped<IPriceRuleService, PriceRuleService>();
 builder.Services.AddScoped<ICartService, CartService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<IPaymentStrategy, StripePaymentStrategy>();
@@ -121,7 +125,40 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     using var scope = app.Services.CreateScope();
-    scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
+
+    // Dev-only admin bootstrap: ensures an admin account exists for exercising /api/admin/*.
+    // Credentials come from configuration (see appsettings or env). NEVER enabled in production.
+    await EnsureDevAdminAsync(db, builder.Configuration);
+}
+
+static async Task EnsureDevAdminAsync(AppDbContext db, IConfiguration config)
+{
+    var email = config["DevBootstrap:AdminEmail"] ?? "admin@novacart.local";
+    var password = config["DevBootstrap:AdminPassword"] ?? "Admin123!";
+    var fullName = config["DevBootstrap:AdminName"] ?? "Dev Admin";
+
+    // Check if any admin already exists — skip if so.
+    var adminRoleId = 2; // RoleNames.AdminId (seeded)
+    var hasAdmin = db.Set<UserRole>().Any(ur => ur.RoleId == adminRoleId);
+    if (hasAdmin) return;
+
+    // Avoid duplicate email.
+    if (db.Users.Any(u => u.Email == email)) return;
+
+    db.Users.Add(new User
+    {
+        Email = email,
+        FullName = fullName,
+        PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
+        IsActive = true,
+    });
+    await db.SaveChangesAsync();
+
+    var user = db.Users.First(u => u.Email == email);
+    db.Set<UserRole>().Add(new UserRole { UserId = user.Id, RoleId = adminRoleId });
+    await db.SaveChangesAsync();
 }
 
 // ── Middleware ─────────────────────────────────────────────

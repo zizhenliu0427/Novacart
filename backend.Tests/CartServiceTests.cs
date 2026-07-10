@@ -17,7 +17,7 @@ public class CartServiceTests
     public async Task GetCartAsync_ReturnsEmptyCart_WhenCartDoesNotExist()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db);
+        var svc = new CartService(db, new PricingService());
         var userId = await TestDbFactory.SeedTestUserAsync(db);
 
         var cart = await svc.GetCartAsync(userId);
@@ -32,7 +32,7 @@ public class CartServiceTests
     public async Task AddItemAsync_AddsNewItem_WhenCartIsEmpty()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db);
+        var svc = new CartService(db, new PricingService());
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
 
@@ -56,7 +56,7 @@ public class CartServiceTests
     public async Task AddItemAsync_MergesQuantity_WhenItemAlreadyInCart()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db);
+        var svc = new CartService(db, new PricingService());
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
 
@@ -75,7 +75,7 @@ public class CartServiceTests
     public async Task AddItemAsync_ThrowsAppException_WhenProductDoesNotExist()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db);
+        var svc = new CartService(db, new PricingService());
         var userId = await TestDbFactory.SeedTestUserAsync(db);
 
         var act = () => svc.AddItemAsync(userId, new AddCartItemRequest { ProductId = Guid.NewGuid(), Quantity = 1 });
@@ -87,7 +87,7 @@ public class CartServiceTests
     public async Task AddItemAsync_ThrowsAppException_WhenProductIsInactive()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db);
+        var svc = new CartService(db, new PricingService());
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
 
@@ -103,7 +103,7 @@ public class CartServiceTests
     public async Task AddItemAsync_ThrowsAppException_WhenExceedsStockQuantity()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db);
+        var svc = new CartService(db, new PricingService());
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
 
@@ -121,7 +121,7 @@ public class CartServiceTests
     public async Task AddItemAsync_ThrowsAppException_WhenMergedQuantityExceedsStock()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db);
+        var svc = new CartService(db, new PricingService());
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
 
@@ -141,7 +141,7 @@ public class CartServiceTests
     public async Task UpdateItemAsync_UpdatesQuantity()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db);
+        var svc = new CartService(db, new PricingService());
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
 
@@ -158,7 +158,7 @@ public class CartServiceTests
     public async Task UpdateItemAsync_RemovesItem_WhenQuantityIsZero()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db);
+        var svc = new CartService(db, new PricingService());
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
 
@@ -174,7 +174,7 @@ public class CartServiceTests
     public async Task UpdateItemAsync_ThrowsAppException_WhenQuantityExceedsStock()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db);
+        var svc = new CartService(db, new PricingService());
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
 
@@ -193,7 +193,7 @@ public class CartServiceTests
     public async Task RemoveItemAsync_RemovesItemSuccessfully()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db);
+        var svc = new CartService(db, new PricingService());
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
 
@@ -209,7 +209,7 @@ public class CartServiceTests
     public async Task ClearCartAsync_WipesAllItems()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db);
+        var svc = new CartService(db, new PricingService());
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         
         var products = await db.Products.Take(2).ToListAsync();

@@ -52,7 +52,7 @@ public class PaymentServiceTests
     public async Task ProcessCheckoutAsync_CreatesOrderAndPayment_WhenCartIsValid()
     {
         using var db = TestDbFactory.Create();
-        var cartSvc = new CartService(db);
+        var cartSvc = new CartService(db, new PricingService());
         var paymentSvc = new PaymentService(db, _strategies, _config);
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
@@ -113,7 +113,7 @@ public class PaymentServiceTests
     public async Task ExecutePaymentCompletionAsync_UpdatesStatuses_DecrementsStock_AndClearsCart()
     {
         using var db = TestDbFactory.Create();
-        var cartSvc = new CartService(db);
+        var cartSvc = new CartService(db, new PricingService());
         var paymentSvc = new PaymentService(db, _strategies, _config);
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
@@ -160,7 +160,7 @@ public class PaymentServiceTests
     public async Task ExecutePaymentCompletionAsync_CancelsOrder_WhenStockExhaustedPriorToCompletion()
     {
         using var db = TestDbFactory.Create();
-        var cartSvc = new CartService(db);
+        var cartSvc = new CartService(db, new PricingService());
         var paymentSvc = new PaymentService(db, _strategies, _config);
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);

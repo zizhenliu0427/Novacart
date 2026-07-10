@@ -23,6 +23,31 @@ export interface PagedResult<T> {
   totalPages: number;
 }
 
+export interface AdminProduct extends Product {
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CategoryOption {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+export interface AdminProductRequest {
+  name: string;
+  slug: string;
+  description?: string;
+  price: number;
+  currency: string;
+  stockQuantity: number;
+  categoryId?: number;
+  tags: string[];
+  metadata?: string;
+  isActive: boolean;
+}
+
 export function formatPrice(value: number, currency = 'AUD'): string {
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency }).format(value);
 }

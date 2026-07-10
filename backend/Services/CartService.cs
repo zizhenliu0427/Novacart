@@ -17,8 +17,13 @@ public interface ICartService
 public class CartService : ICartService
 {
     private readonly AppDbContext _db;
+    private readonly IPricingService _pricing;
 
-    public CartService(AppDbContext db) => _db = db;
+    public CartService(AppDbContext db, IPricingService pricing)
+    {
+        _db = db;
+        _pricing = pricing;
+    }
 
     // ── Internal helpers ──────────────────────────────────────
 
@@ -56,35 +61,70 @@ public class CartService : ICartService
     }
 
     /// <summary>
-    /// Map cart to DTO. Must be called after items are materialised (Product navigation loaded).
-    /// Uses ProductService.ResolvePrice (static) so it doesn't capture an instance in LINQ.
+    /// Load active pricing rules applicable to the cart's products, then map to DTO.
+    /// Called after items are materialised (Product navigation loaded).
     /// </summary>
-    private static CartDto MapToDto(Cart cart) =>
-        new()
+    private CartDto MapToDto(Cart cart, IReadOnlyCollection<PriceRule> rules)
+    {
+        var lineDtos = cart.Items.Select(ci =>
         {
-            Id = cart.Id,
-            Items = cart.Items.Select(ci => new CartItemDto
+            var effectivePrice = _pricing.ResolveEffectivePrice(ci.Product, rules);
+            return new CartItemDto
             {
                 Id            = ci.Id,
                 ProductId     = ci.ProductId,
                 ProductName   = ci.Product.Name,
                 ProductSlug   = ci.Product.Slug,
-                UnitPrice     = ProductService.ResolvePrice(ci.Product),
+                UnitPrice     = effectivePrice,
                 Currency      = ci.Product.Currency,
                 Quantity      = ci.Quantity,
-                LineTotal     = ProductService.ResolvePrice(ci.Product) * ci.Quantity,
+                LineTotal     = effectivePrice * ci.Quantity,
                 StockQuantity = ci.Product.StockQuantity,
-            }).ToList(),
-            Subtotal   = cart.Items.Sum(ci => ProductService.ResolvePrice(ci.Product) * ci.Quantity),
+            };
+        }).ToList();
+
+        return new CartDto
+        {
+            Id         = cart.Id,
+            Items      = lineDtos,
+            Subtotal   = lineDtos.Sum(dto => dto.LineTotal),
             TotalItems = cart.Items.Sum(ci => ci.Quantity),
         };
+    }
+
+    /// <summary>Map using base prices only (no rules) — legacy/static fallback.</summary>
+    private CartDto MapToDtoBase(Cart cart) =>
+        MapToDto(cart, Array.Empty<PriceRule>());
+
+    /// <summary>Load the pricing rules applicable to a cart's product set.</summary>
+    private async Task<IReadOnlyCollection<PriceRule>> LoadActiveRulesAsync(Cart cart)
+    {
+        var productIds = cart.Items.Select(ci => ci.ProductId).Distinct().ToList();
+        var categoryIds = cart.Items
+            .Where(ci => ci.Product.CategoryId.HasValue)
+            .Select(ci => ci.Product.CategoryId!.Value)
+            .Distinct()
+            .ToList();
+
+        if (productIds.Count == 0) return Array.Empty<PriceRule>();
+
+        return await _db.PriceRules
+            .Where(r => r.IsActive &&
+                        ((r.StartsAt == null || r.StartsAt <= DateTime.UtcNow) &&
+                         (r.EndsAt == null || r.EndsAt >= DateTime.UtcNow)) &&
+                        ((r.ProductId != null && productIds.Contains(r.ProductId.Value)) ||
+                         (r.CategoryId != null && categoryIds.Contains(r.CategoryId.Value)) ||
+                         (r.ProductId == null && r.CategoryId == null)))
+            .ToListAsync();
+    }
 
     // ── Public methods ────────────────────────────────────────
 
     public async Task<CartDto> GetCartAsync(Guid userId)
     {
         var cart = await GetOrCreateCartAsync(userId);
-        return MapToDto(cart);
+        var rules = await LoadActiveRulesAsync(cart);
+        return MapToDto(cart, rules);
     }
 
     public async Task<CartDto> AddItemAsync(Guid userId, AddCartItemRequest request)
@@ -123,7 +163,8 @@ public class CartService : ICartService
 
         // Re-fetch cart with products loaded for DTO mapping.
         var reloaded = await ReloadCartAsync(cart.Id);
-        return MapToDto(reloaded);
+        var rules = await LoadActiveRulesAsync(reloaded);
+        return MapToDto(reloaded, rules);
     }
 
     public async Task<CartDto> UpdateItemAsync(Guid userId, Guid cartItemId, UpdateCartItemRequest request)
@@ -147,7 +188,8 @@ public class CartService : ICartService
 
         cart.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return MapToDto(cart);
+        var rules = await LoadActiveRulesAsync(cart);
+        return MapToDto(cart, rules);
     }
 
     public async Task<CartDto> RemoveItemAsync(Guid userId, Guid cartItemId)
@@ -161,7 +203,8 @@ public class CartService : ICartService
         _db.CartItems.Remove(item);
         cart.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
-        return MapToDto(cart);
+        var rules = await LoadActiveRulesAsync(cart);
+        return MapToDto(cart, rules);
     }
 
     public async Task ClearCartAsync(Guid userId)

@@ -1,25 +1,41 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Novacart.Api.Models.Dtos.Pricing;
 using Novacart.Api.Models.Entities;
 using Novacart.Api.Services;
 
 namespace Novacart.Api.Controllers.Admin;
 
 /// <summary>
-/// P2-5 (Dynamic pricing admin) — SCAFFOLD. CRUD for <see cref="PriceRule"/> rows that
-/// feed <see cref="IPricingService"/>. RBAC-guarded. See HANDOFF §7 P2-5.
+/// P2-5 (Dynamic pricing admin). CRUD for <see cref="PriceRule"/> rows that feed
+/// <see cref="IPricingService"/>. RBAC-guarded.
 /// </summary>
 [ApiController]
 [Route("api/admin/price-rules")]
 [Authorize(Roles = RoleNames.AdminRoles)]
 public class AdminPriceRulesController : ControllerBase
 {
+    private readonly IPriceRuleService _priceRules;
+
+    public AdminPriceRulesController(IPriceRuleService priceRules) => _priceRules = priceRules;
+
     [HttpGet]
-    public IActionResult List() => throw AppException.NotImplemented("P2-5: list price rules not implemented yet.");
+    [ProducesResponseType(typeof(IReadOnlyList<PriceRuleDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> List() => Ok(await _priceRules.GetAllAsync());
 
     [HttpPost]
-    public IActionResult Create() => throw AppException.NotImplemented("P2-5: create price rule not implemented yet.");
+    [ProducesResponseType(typeof(PriceRuleDto), StatusCodes.Status201Created)]
+    public async Task<IActionResult> Create([FromBody] CreatePriceRuleRequest request)
+    {
+        var created = await _priceRules.CreateAsync(request);
+        return CreatedAtAction(nameof(List), new { id = created.Id }, created);
+    }
 
     [HttpDelete("{id:guid}")]
-    public IActionResult Delete(Guid id) => throw AppException.NotImplemented("P2-5: delete price rule not implemented yet.");
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        await _priceRules.DeleteAsync(id);
+        return NoContent();
+    }
 }
