@@ -1,8 +1,9 @@
-# .NET
-backend/bin/
-backend/obj/
-backend/*.user
-backend/*.suo
+# .NET — build output & caches (any project)
+**/bin/
+**/obj/
+*.user
+*.suo
+*.pdb
 
 # Node
 frontend/node_modules/
