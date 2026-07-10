@@ -7,7 +7,7 @@
 >
 > **Status:** Priority 1 (MVP) is **complete & verified**. This file now orients toward **Priority 2**.
 >
-> Last updated: 2026-07-10 — P1 complete; global exception handling added; P2 plan written.
+> Last updated: 2026-07-10 — P1 complete & independently re-verified (backend build + 41 tests pass, frontend build + 12 tests pass); P2 plan reconciled with README/P14 (added P2-12 Advanced Search & Filtering + a P3/planned roadmap tail in §10).
 
 ---
 
@@ -156,7 +156,8 @@ The P14 spec ([P14_Modern_Ecommerce_Web_App.md](P14_Modern_Ecommerce_Web_App.md)
 | P14 requirement | Priority | Status | Notes / where it lands |
 |---|---|---|---|
 | **Product type-specific attributes** | **P1** | ✅ DONE | Dynamic Specifications table from `Product.Metadata` (jsonb). |
-| **Sorting** (with search/filter) | **P1** | ✅ DONE | Sorting by newest, price, name. |
+| **Basic search + category + sorting** | **P1** | ✅ DONE | Keyword (ILIKE) + single-category chip + sort by newest/price/name. |
+| **Advanced search & filtering** (README #9) | **P2** | 🟡 PARTIAL | Have keyword+one-category+sort. Missing: price-range, tag/attribute **facets**, multi-select category, optional full-text (ER planned GIN/FTS indexes). See P2-12. |
 | **RBAC** — 3 roles with access control | **P2** | 🔴 TODO | Roles seeded + claims in JWT. Missing: `[Authorize(Roles=...)]` on admin endpoints + a 403 path. See P2-1. |
 | **Customer profile management** | **P2** | 🔴 TODO | `GET/PUT /api/users/me` for profile edit. See P2-2. |
 | **Wishlist** | **P2** | 🔴 TODO | `Wishlist` entity (user_id, product_id, added_at) + UI toggle. See P2-3. |
@@ -238,6 +239,7 @@ Legend: 🟢 done · 🟡 partial · 🔴 not started. **All 🔴 below.**
 ### P2-7 — Shipping Info + Order Status Workflow — 🔴 (schema-ready)
 **Goal:** Capture shipping address; let admin advance order status through the full lifecycle.
 - `OrderStatuses` **already** defines the full P14 workflow: `pending → paid → processing → shipped → completed (+ cancelled)`.
+- **Design choice:** the [ER doc](Database_ER_Diagram.md) designed a *table-driven* state machine (`order_status_transitions` seed + `order_status_history` audit trail). Simplest P2 path is a hardcoded allowed-transition map + validation; adopt the history table if you want a full admin audit trail (recommended for the admin dashboard).
 - [ ] `ShippingAddress` value object or entity: `{ OrderId, Line1, Line2, City, State, Postcode, Country }` (or reuse a user Address entity).
 - [ ] Capture address at checkout (extend `CheckoutRequest`).
 - [ ] Admin order-status controller: `PATCH /api/admin/orders/{id}/status` (guarded by P2-1 RBAC) with allowed-transition validation.
@@ -276,6 +278,17 @@ Legend: 🟢 done · 🟡 partial · 🔴 not started. **All 🔴 below.**
 - [ ] Backend: add `WebApplicationFactory`-based integration tests (full HTTP round-trip) for auth + checkout flows — currently tests are service-level only.
 - [ ] Raise coverage gating if a CI pipeline is added.
 
+### P2-12 — Advanced Search & Filtering — 🟡 (partial; README #9)
+**Goal:** Go beyond the P1 keyword+single-category+sort to true faceted filtering, as the P14 spec's
+"multi-category search with type-based filtering and sorting" requires.
+- Today: `ProductService` does ILIKE keyword + one `categoryId` + sort. This item adds facets.
+- [ ] **Price-range filter** (`minPrice`/`maxPrice`) in the products query + a range control in the filter rail.
+- [ ] **Tag facets** — filter by `Product.Tags` (Postgres `text[]`, `= ANY`); surface available tags as multi-select chips. Add the GIN index the ER planned (`idx_products_tags_gin`).
+- [ ] **Multi-select category** (accept `categoryId` list) instead of a single chip.
+- [ ] *(Optional)* **Full-text search** on name+description via a Postgres `tsvector` GIN index (ER planned `idx_products_fts`) — replaces ILIKE for relevance/ranking.
+- [ ] Frontend: expand the filter rail (price slider, tag chips, multi-category); reflect active facets as removable chips; keep it URL-driven (query params) so results are shareable/back-button-safe.
+- [ ] Tests: `ProductServiceTests` for price-range bounds, tag ANY-match, combined facets.
+
 ---
 
 ## 8. Flat P2 TODO checklist
@@ -294,6 +307,7 @@ Legend: 🟢 done · 🟡 partial · 🔴 not started. **All 🔴 below.**
 - [ ] P2-7 Shipping + status workflow: address capture + `PATCH /api/admin/orders/{id}/status` + status timeline UI.
 - [ ] P2-9 Analytics: `AnalyticsService` + endpoints + ECharts dashboard.
 - [ ] P2-10 PWA: Service Worker + offline shell + Lighthouse pass.
+- [ ] P2-12 Advanced search: price-range + tag facets + multi-category (+ optional FTS) with GIN indexes and a URL-driven filter rail.
 
 **Quality**
 - [ ] P2-11 Tests: frontend component/context tests (RTL) + backend `WebApplicationFactory` integration tests.
@@ -305,3 +319,130 @@ Legend: 🟢 done · 🟡 partial · 🔴 not started. **All 🔴 below.**
 
 - `AuthException` is a separate class from `AppException` with an identical shape (message + `StatusCode`). They could be unified (`AuthException : AppException`) for simplicity, but both are already handled by `GlobalExceptionHandler`, so this is cosmetic.
 - `docker-compose.override.yml` is intentionally not committed (machine-local port remap to avoid clashes with another stack on 3000/5432/6379).
+- `vitest.config.ts` sits in the frontend tsconfig `include`, so `next build` type-checks it — harmless because `vitest` is a devDependency, but it means a fresh clone must `npm install` (dev deps included) before `next build`. Consider excluding test config from the production tsconfig if build time matters.
+- This file is still named `HANDOFF_P1.md` but now covers the whole roadmap — consider renaming to `HANDOFF.md`.
+
+---
+
+## 10. P3 — Technical Enhancements (implementation outline)
+
+Maps to the README's **Priority 3** tier (#10–#13). Several P3 items are already partially satisfied by P1 work;
+this section records what's left. Do P3 **after** the P2 features, except CI/CD (P3-1) which is worth standing up early.
+
+**P3 tier — already satisfied by P1:**
+
+| README P3 item | Status |
+|---|---|
+| Reusable components + custom hooks (#10) | ✅ Mostly done (`useAuth`/`useCart`, `Button`/`Card`/`Input`/`Badge`/`ProductCard`/`EmptyState`, `HeaderNav`). |
+| Unified API layer + Swagger (#11) | ✅ Done (`apiCall` wrapper with token/401 handling; Swashbuckle + Bearer). |
+| Layered architecture + Strategy pattern (#13) | ✅ Done (Controller→Service→Entity; `IPaymentStrategy`). |
+
+### P3-1 — CI/CD pipeline (GitHub Actions) — 🔴
+**Goal:** Automated build + test on every push/PR; optional deploy.
+- [ ] Workflow: build backend + run xUnit; build frontend + run Vitest — reuse the containerized `Dockerfile.*.test`.
+- [ ] Cache NuGet + npm for speed; run on PR + `main`.
+- [ ] Status badges in the README; branch protection requiring green.
+- [ ] *(Optional)* deploy job (build+push images; deploy to the target env — see P3-6).
+
+### P3-2 — Test coverage expansion — 🔴 (continues P2-11)
+**Goal:** Move beyond pure-function tests to components, contexts, and HTTP integration.
+- [ ] Frontend: RTL component tests (`ProductCard`, `Button`, `Input`, cart stepper) + `AuthContext`/`CartContext` integration tests (mock `apiCall`).
+- [ ] Backend: `WebApplicationFactory` integration tests (full HTTP round-trip) for auth + checkout.
+- [ ] Coverage reporting + a gate in the P3-1 pipeline.
+
+### P3-3 — Code quality & patterns (#13) — 🔴
+**Goal:** Round out the "engineering depth" requirements.
+- [ ] **Factory pattern** where it fits (e.g. an `OrderFactory` building an `Order`+`OrderItems`+snapshot from a cart; or a `PaymentStrategyFactory` if strategy selection grows). Document the two patterns (Factory + existing Strategy).
+- [ ] **Mapper layer** — extract entity→DTO mapping into `Mappers/` (or Mapster/AutoMapper) as DTOs multiply, completing the `Controller → Service → Mapper → Entity` layering named in the README.
+- [ ] **Alibaba DB standards pass** — audit naming/index/`BIGINT`/`DECIMAL` conventions against the standard; document deviations (we use Guid PKs by design).
+
+### P3-4 — Frontend architecture polish (#10) — 🔴
+**Goal:** The remaining items from the README's frontend-architecture list.
+- [ ] **Responsive sidebar** for the `/admin` area (auto-collapse ≤768px) — pairs with P2-8.
+- [ ] Extract more shared primitives as pages grow (e.g. `DataTable`, `Pagination`, `Modal`, `Toast`).
+- [ ] Nested routing/route-guard refinement (customer vs admin layouts; loading/error boundaries per segment).
+- [ ] A11y + responsive audit across breakpoints (mobile/tablet/desktop) per the P14 non-functional reqs.
+
+### P3-5 — Performance & caching — 🔴
+**Goal:** Use the Redis that's already wired but currently idle.
+- [ ] **Redis cache** for the product list and recent orders (README P1 mentioned Redis-cached recent orders; not yet implemented — pick it up here). Cache-aside with sensible TTLs + invalidation on writes.
+- [ ] Response compression, HTTP caching headers for static/product responses.
+- [ ] DB: confirm the ER's planned indexes exist for hot queries (orders by user+status, product filters).
+
+### P3-6 — Deployment & ops — 🔴
+**Goal:** Get it running somewhere real (README targets AWS).
+- [ ] `docker-compose.prod.yml` (already referenced in the README) with production settings + secrets via env, not appsettings.
+- [ ] Move `Jwt:Secret`, Stripe keys, DB creds to real secret storage; drop dev placeholders.
+- [ ] AWS path per README: EC2 (app), RDS (Postgres), ElastiCache (Redis), S3 (product images / static).
+- [ ] Structured logging + a deeper `/health` (DB + Redis readiness); basic error monitoring.
+
+---
+
+## 11. Planned Enhancements (scaling tail — not scheduled)
+
+From the README's "Planned Enhancements" table — explicitly **out of scope** until the platform needs to scale.
+Recorded so the roadmap is complete; do **not** start these during P2/P3.
+
+| Enhancement | First natural trigger |
+|---|---|
+| Microservice split (Auth/Product/Cart/Order) + API gateway (YARP/Ocelot) + Consul + Polly | When the monolith's teams/deploys need independence. |
+| RabbitMQ async order processing + email/inventory pipeline | Grows out of P2-6 (email) once inline sending isn't enough. |
+| ElasticSearch full-text catalogue search | Successor to P2-12's Postgres FTS when relevance/scale demands it. |
+| Redis distributed lock (Redlock) for atomic inventory | When multiple app instances contend on stock (flash sales). |
+| Redis-backed cart (sub-ms, cross-device) | Optimisation of P2-4 guest cart. |
+| SQL sharding, thread-pool tuning | High-volume scaling. |
+| AI chatbot (OpenAI/Ollama), i18n (zh/en) | Product-driven, low priority. |
+
+---
+
+## 12. Suggested execution order (P2 → P3)
+
+**P2 (by dependency):** **P2-1 RBAC + P2-8 Admin CRUD together** (foundation) → P2-7 order-status workflow →
+P2-5 dynamic pricing (needs admin CRUD) → P2-9 analytics (needs orders/admin) → P2-3 wishlist / P2-2 profile /
+P2-4 guest-cart / P2-12 advanced search (independent, any order) → P2-6 email → P2-10 PWA SW → P2-11 tests (continuous).
+
+**P3 (after P2, except CI early):** P3-1 CI/CD (stand up early) → P3-3 patterns/mappers + P3-4 FE polish (alongside admin work) →
+P3-5 caching → P3-2 deeper tests → P3-6 deployment.
+
+> **Scaffold note:** a compiling **P2 skeleton** has been committed (see §13) — entities, service/controller stubs,
+> RBAC policy, and admin/account/wishlist frontend shells — so P2 work is "fill in the bodies," not "start from zero."
+
+---
+
+## 13. P2 scaffold — what's already wired (fill in the bodies)
+
+A **compiling, non-breaking P2 skeleton** is in place. Everything below builds; backend 41 tests still pass; frontend
+builds (20 routes). Stub endpoints return **501 Not Implemented** (via `AppException.NotImplemented`) and stub services
+throw the same — so nothing lies about being done, and **RBAC is real** (customers get **403** on admin routes today).
+Implementing a P2 feature = replace the stub body; the entity, DI, route, and auth wiring already exist.
+
+**Backend scaffold**
+
+| Piece | File | Maps to |
+|---|---|---|
+| Entities + DbSets + config | `Models/Entities/WishlistItem.cs`, `PriceRule.cs`, `UserAddress.cs`; wired in [AppDbContext.cs](backend/Data/AppDbContext.cs) | P2-3 / P2-5 / P2-7 |
+| Migration | `Data/Migrations/*_AddP2Scaffold.cs` (creates `wishlist_items`, `price_rules`, `user_addresses`) | — |
+| RBAC constant | `RoleNames.AdminRoles` (`"admin,sysadmin"`) in [Role.cs](backend/Models/Entities/Role.cs) | P2-1 |
+| Stub services (DI-registered in [Program.cs](backend/Program.cs)) | `Services/UserService.cs`, `WishlistService.cs`, `PricingService.cs` (pass-through), `AnalyticsService.cs` | P2-2 / P2-3 / P2-5 / P2-9 |
+| Customer controllers | `Controllers/UsersController.cs`, `WishlistController.cs` (`[Authorize]`) | P2-2 / P2-3 |
+| Admin controllers (`[Authorize(Roles = RoleNames.AdminRoles)]`) | `Controllers/Admin/AdminProductsController.cs`, `AdminOrdersController.cs`, `AdminPriceRulesController.cs`, `AdminAnalyticsController.cs` | P2-8 / P2-7 / P2-5 / P2-9 |
+| 501 helper | `AppException.NotImplemented()` in [AppException.cs](backend/Services/AppException.cs) | — |
+
+**Frontend scaffold**
+
+| Piece | File | Maps to |
+|---|---|---|
+| Admin shell (sidebar + client-side role gate) | `app/admin/layout.tsx` | P2-1 / P2-8 |
+| Admin stub pages | `app/admin/page.tsx`, `admin/products`, `admin/orders`, `admin/pricing`, `admin/analytics` | P2-5/7/8/9 |
+| Account (profile, read-only) | `app/account/page.tsx` | P2-2 |
+| Wishlist page + context | `app/wishlist/page.tsx`, `contexts/WishlistContext.tsx` (local-only) | P2-3 |
+| `ComingSoon` placeholder | `components/ui/ComingSoon.tsx` | — |
+| Route guards | `middleware.ts` now protects `/admin`, `/account`, `/wishlist` | P2-1 |
+| Nav discoverability | `HeaderNav.tsx` user menu → Account / Wishlist / Orders (+ Admin for admins) | — |
+
+**To start building on the scaffold:**
+1. `docker compose up --build -d` — auto-migration creates the new tables on backend startup.
+2. **Seed an admin user** to exercise the admin area — assign `RoleNames.AdminId` in `user_roles` (or add a dev seed). Without one, `/admin` correctly shows "access required".
+3. Pick a P2 item, replace the stub body (service + controller), and delete the `NotImplemented`/`ComingSoon` placeholder. Wiring, DI, routes, and RBAC are already there.
+
+> Note: the running Docker stack was built before this scaffold — rebuild (`--build`) to apply the `AddP2Scaffold` migration.
