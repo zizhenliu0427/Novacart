@@ -15,7 +15,7 @@ public class OrderServiceTests
     public async Task GetOrdersAsync_ReturnsOnlyUserOrders_PaginatedAndOrderedByNewest()
     {
         using var db = TestDbFactory.Create();
-        var svc = new OrderService(db);
+        var svc = new OrderService(db, new NullRedisCacheService());
 
         var userId = await TestDbFactory.SeedTestUserAsync(db, "user1@example.com");
         var otherUserId = await TestDbFactory.SeedTestUserAsync(db, "user2@example.com");
@@ -46,7 +46,7 @@ public class OrderServiceTests
     public async Task GetOrderByIdAsync_ReturnsCorrectOrderDetails()
     {
         using var db = TestDbFactory.Create();
-        var svc = new OrderService(db);
+        var svc = new OrderService(db, new NullRedisCacheService());
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
@@ -96,7 +96,7 @@ public class OrderServiceTests
     public async Task GetOrderByIdAsync_ThrowsAppException_WhenOrderDoesNotExist()
     {
         using var db = TestDbFactory.Create();
-        var svc = new OrderService(db);
+        var svc = new OrderService(db, new NullRedisCacheService());
         var userId = await TestDbFactory.SeedTestUserAsync(db);
 
         var act = () => svc.GetOrderByIdAsync(userId, Guid.NewGuid());
@@ -108,7 +108,7 @@ public class OrderServiceTests
     public async Task GetOrderByIdAsync_ThrowsAppException_WhenUserDoesNotOwnOrder()
     {
         using var db = TestDbFactory.Create();
-        var svc = new OrderService(db);
+        var svc = new OrderService(db, new NullRedisCacheService());
 
         var userId = await TestDbFactory.SeedTestUserAsync(db, "owner@example.com");
         var maliciousUserId = await TestDbFactory.SeedTestUserAsync(db, "attacker@example.com");

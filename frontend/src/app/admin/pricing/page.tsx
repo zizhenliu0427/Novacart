@@ -86,7 +86,7 @@ function scopeLabel(rule: PriceRule): string {
 }
 
 export default function AdminPricingPage() {
-  const { token } = useAuth();
+  const { user } = useAuth();
   const [rules, setRules] = useState<PriceRule[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [products, setProducts] = useState<{ id: string; name: string }[]>([]);
@@ -100,33 +100,33 @@ export default function AdminPricingPage() {
   const [submitting, setSubmitting] = useState(false);
 
   const loadRules = useCallback(async () => {
-    if (!token) return;
+    if (!user) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await apiCall<PriceRule[]>('/admin/price-rules', { token });
+      const data = await apiCall<PriceRule[]>('/admin/price-rules');
       setRules(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load pricing rules.');
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [user]);
 
   useEffect(() => {
     loadRules();
   }, [loadRules]);
 
   useEffect(() => {
-    if (!token) return;
-    apiCall<CategoryOption[]>('/admin/products/categories', { token })
+    if (!user) return;
+    apiCall<CategoryOption[]>('/admin/products/categories')
       .then(setCategories)
       .catch(() => {});
     // Load products for the product-scoped selector (reuse admin products endpoint).
-    apiCall<{ items: { id: string; name: string }[] }>('/admin/products?pageSize=100', { token })
+    apiCall<{ items: { id: string; name: string }[] }>('/admin/products?pageSize=100')
       .then((data) => setProducts(data.items))
       .catch(() => {});
-  }, [token]);
+  }, [user]);
 
   function openCreate() {
     setForm(EMPTY_FORM);
@@ -142,7 +142,7 @@ export default function AdminPricingPage() {
 
   async function submitRule(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!token) return;
+    if (!user) return;
     setFormError(null);
 
     const value = Number(form.value);
@@ -167,7 +167,7 @@ export default function AdminPricingPage() {
 
     setSubmitting(true);
     try {
-      await apiCall<PriceRule>('/admin/price-rules', { method: 'POST', token, body });
+      await apiCall<PriceRule>('/admin/price-rules', { method: 'POST', body });
       setNotice('Pricing rule created.');
       setFormOpen(false);
       await loadRules();
@@ -179,11 +179,11 @@ export default function AdminPricingPage() {
   }
 
   async function deleteRule(rule: PriceRule) {
-    if (!token) return;
+    if (!user) return;
     if (!window.confirm(`Delete this ${describeRule(rule)} rule?`)) return;
     setError(null);
     try {
-      await apiCall<void>(`/admin/price-rules/${rule.id}`, { method: 'DELETE', token });
+      await apiCall<void>(`/admin/price-rules/${rule.id}`, { method: 'DELETE' });
       setNotice('Pricing rule deleted.');
       await loadRules();
     } catch (err) {

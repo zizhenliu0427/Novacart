@@ -42,7 +42,7 @@ Novacart is a full-stack e-commerce web application. The MVP delivers five core 
 
 ### 2. Product Browsing
 
-- Product catalogue from **Square Catalogue API** (sandbox/test data)
+- Product catalogue from **PostgreSQL seed data** (12 products, 5 categories) — **Square Catalogue API** integration planned for P2
 - Display product name, description, images, and price
 - Search and filter products by keyword and category
 
@@ -163,7 +163,8 @@ Novacart is a full-stack e-commerce web application. The MVP delivers five core 
 | **Database** | PostgreSQL 16+ |
 | **Cache** | Redis 7+ |
 | **Payment** | Stripe API (sandbox) |
-| **Product Data** | Square Catalogue API (sandbox) |
+| **Product Data** | PostgreSQL seed data (P1); Square Catalogue API (P2) |
+
 | **Auth** | JWT (HS256) + bcrypt |
 | **Webhook** | ngrok |
 | **Container** | Docker, Docker Compose |
@@ -356,7 +357,7 @@ STRIPE_SECRET_KEY=sk_test_...
 STRIPE_PUBLISHABLE_KEY=pk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 
-# Square (sandbox)
+# Square (sandbox — P2)
 SQUARE_ACCESS_TOKEN=EAAAl...
 SQUARE_ENVIRONMENT=sandbox
 

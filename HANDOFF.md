@@ -7,7 +7,7 @@
 >
 > **Status:** Priority 1 (MVP) is **complete & verified**. Priority 2 (P2) features are largely implemented. See §8 for the current P2 status.
 >
-> Last updated: 2026-07-10 — P2-A admin/RBAC foundation, P2-B order workflow, P2-C dynamic pricing, P2-D profile and Wishlist core are implemented with tests. Backend **92/92** tests passing, frontend **12/12** passing. Wishlist heart controls, HTTP-level RBAC tests and the remaining P2-E slices are still open.
+> Last updated: 2026-07-11 — P1 completed: Redis caching (products + orders), JWT HttpOnly cookie auth, ngrok/Stripe webhook docs. Square API integration moved to P2 checklist. P2-A admin/RBAC foundation, P2-B order workflow, P2-C dynamic pricing, P2-D profile and Wishlist core are implemented with tests. Wishlist heart controls, Square integration, HTTP-level RBAC tests and the remaining P2-E slices are still open.
 
 ---
 
@@ -15,12 +15,15 @@
 
 - **Stack:** Backend ASP.NET Core 8 + EF Core + PostgreSQL + Redis. Frontend Next.js 14 (App Router) + TS + Tailwind.
 - **Priority 1 (MVP) is 100% completed and verified** — the 5 core features (auth, products, cart, checkout, orders) all work end-to-end.
+  - **Auth** uses HttpOnly cookie (`novacart_jwt`) for JWT storage — prevents XSS.
+  - **Redis** is actively used: product list cache (60s TTL), order list/detail cache (30s TTL), with invalidation on mutations.
+  - **Products** come from PostgreSQL seed data (12 products across 5 categories); **Square Catalogue API** integration is a P2 deliverable.
 - **Priority 2 (P2) is largely implemented:**
   - P2-A: RBAC + admin product CRUD + **dev admin bootstrap** (done)
   - P2-B: **Order management + status workflow** with audit history (done — backend + UI + tests)
   - P2-C: **Dynamic pricing** (rule engine wired into products + cart; admin CRUD UI) (done)
   - P2-D: **Customer profile** done; Wishlist persistence/page/tests done, but product-card/detail heart controls remain
-  - Remaining P2: shipping/address capture, wishlist heart controls, guest cart, email, analytics, PWA, advanced search, and expanded HTTP/frontend tests
+  - Remaining P2: **Square Catalogue API integration**, shipping/address capture, wishlist heart controls, guest cart, email, analytics, PWA, advanced search, and expanded HTTP/frontend tests
 - **The schema is future-proofed** for remaining P2 features (6-state order workflow with audit history, guest-cart columns, price rules, wishlist, user addresses) — see §7.
 - **Everything runs in Docker** — one command: `docker compose up --build -d`.
 
@@ -39,6 +42,7 @@
 | Password hashing (bcrypt) | ✅ | `AuthService` (BCrypt.Net-Next) |
 | JWT issuing (HS256, sub/email/name/role claims) | ✅ | [backend/Services/JwtTokenService.cs](backend/Services/JwtTokenService.cs) |
 | Auth endpoints: `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout` | ✅ | [backend/Controllers/AuthController.cs](backend/Controllers/AuthController.cs) |
+| **JWT HttpOnly cookie** (`novacart_jwt`) — set on login/register, cleared on logout; also readable from Bearer header for Swagger | ✅ | [backend/Controllers/AuthController.cs](backend/Controllers/AuthController.cs), [backend/Program.cs](backend/Program.cs) |
 | JWT bearer auth + authorization middleware wired | ✅ | [backend/Program.cs](backend/Program.cs) |
 | Auth frontend: login + register pages, useAuth hook, middleware route guard, header user menu | ✅ | [frontend/src/app/login/](frontend/src/app/login/), [frontend/src/app/register/](frontend/src/app/register/), [frontend/src/contexts/AuthContext.tsx](frontend/src/contexts/AuthContext.tsx), [frontend/src/middleware.ts](frontend/src/middleware.ts) |
 | ProductService + DTOs (paginated list with ILike search, category filter, 4 sort modes, detail with metadata) | ✅ | [backend/Services/ProductService.cs](backend/Services/ProductService.cs), [backend/Models/Dtos/Products/ProductDtos.cs](backend/Models/Dtos/Products/ProductDtos.cs) |
@@ -54,7 +58,7 @@
 | Shared AppException (message + HTTP status, factories: NotFound, Conflict, Forbidden) | ✅ | [backend/Services/AppException.cs](backend/Services/AppException.cs) |
 | CartService + CartController (full CRUD: get, add with merge + stock check, update qty, remove, clear) | ✅ | [backend/Services/CartService.cs](backend/Services/CartService.cs), [backend/Controllers/CartController.cs](backend/Controllers/CartController.cs) |
 | **PaymentService + CheckoutController** (ProcessCheckout, Strategy-pattern Stripe integration, webhook processing, signature verify, event log idempotency) | ✅ | [backend/Services/Payments/](backend/Services/Payments/), [backend/Controllers/CheckoutController.cs](backend/Controllers/CheckoutController.cs) |
-| **OrderService + OrdersController** (GetOrders, GetOrderById with user ownership check) | ✅ | [backend/Services/OrderService.cs](backend/Services/OrderService.cs), [backend/Controllers/OrdersController.cs](backend/Controllers/OrdersController.cs) |
+| **OrderService + OrdersController** (GetOrders, GetOrderById with user ownership check, **Redis-cached** with 30s TTL) | ✅ | [backend/Services/OrderService.cs](backend/Services/OrderService.cs), [backend/Controllers/OrdersController.cs](backend/Controllers/OrdersController.cs) |
 | Frontend: products list page (paginated, debounced search, sort dropdown, **server-side category chip filter**, loading skeletons) | ✅ | [frontend/src/app/products/page.tsx](frontend/src/app/products/page.tsx) |
 | Frontend: product detail page (dynamic metadata attribute table, stock badges, tags, add-to-cart) | ✅ | [frontend/src/app/products/[id]/page.tsx](frontend/src/app/products/[id]/page.tsx) |
 | Frontend: CartContext + useCart (loads on auth, addItem/updateItem/removeItem) | ✅ | [frontend/src/contexts/CartContext.tsx](frontend/src/contexts/CartContext.tsx) |
@@ -63,13 +67,15 @@
 | **Frontend: Order History page** (expandable cards with lazy-loaded item receipts, status badges, frozen pricing) | ✅ | [frontend/src/app/orders/page.tsx](frontend/src/app/orders/page.tsx) |
 | Frontend: HeaderNav with user menu, live cart badge count | ✅ | [frontend/src/components/HeaderNav.tsx](frontend/src/components/HeaderNav.tsx) |
 | Frontend: shared `Input` component (label/error/helperText/3 sizes) wired into login/register/products | ✅ | [frontend/src/components/ui/Input.tsx](frontend/src/components/ui/Input.tsx) |
-| Frontend: token-key bug fixed — `apiCall` 401 path now calls `clearToken()` (clears correct localStorage key + auth cookie) | ✅ | [frontend/src/lib/api.ts](frontend/src/lib/api.ts) |
+| Frontend: cookie-based auth — `apiCall` uses `credentials: 'include'`; JWT in HttpOnly cookie, flag cookie for Edge middleware | ✅ | [frontend/src/lib/api.ts](frontend/src/lib/api.ts), [frontend/src/lib/auth.ts](frontend/src/lib/auth.ts) |
 | Frontend: shared `order.ts` types (de-duplicated from inline interfaces) | ✅ | [frontend/src/types/order.ts](frontend/src/types/order.ts) |
 | **Backend Unit Tests** (92 tests across auth, catalogue, cart, payments, admin products/orders, pricing, profile and wishlist) | ✅ 92/92 | [backend.Tests/](backend.Tests/) |
 | **Frontend Unit Tests** (12 tests using Vitest for helper formatting/parsing logic) | ✅ | [frontend/src/types/product.test.ts](frontend/src/types/product.test.ts) |
 | **Containerized Test Configurations** (`Dockerfile.backend.test`, `Dockerfile.frontend.test`, `vitest.config.ts`) | ✅ | Root & [frontend/vitest.config.ts](frontend/vitest.config.ts) |
 | Swagger with Bearer auth button | ✅ | `/swagger` |
 | Docker: full stack runs, no host tooling, no port clashes | ✅ | [docker-compose.yml](docker-compose.yml) + local `docker-compose.override.yml` |
+| **Redis caching** (product list 60s TTL + order list/detail 30s TTL, invalidation on mutations) | ✅ | [backend/Services/RedisCacheService.cs](backend/Services/RedisCacheService.cs) |
+| **Stripe webhook local testing docs** (Stripe CLI + ngrok) | ✅ | [docs/STRIPE_WEBHOOK_LOCAL.md](docs/STRIPE_WEBHOOK_LOCAL.md) |
 | Frontend design system implemented (tokens, Tailwind, Inter, base components, reskinned pages) | ✅ | [globals.css](frontend/src/app/globals.css), [tailwind.config.ts](frontend/tailwind.config.ts), [components/](frontend/src/components/) |
 | Light/dark theme following the OS (`prefers-color-scheme`) | ✅ | `globals.css` token blocks + `themeColor` in [layout.tsx](frontend/src/app/layout.tsx) |
 
@@ -151,11 +157,11 @@ The tone is deliberately **neutral, content-first, and adaptable**: a clean, tru
 
 All five MVP features are done. Recorded here for reference; the active work is P2 (§7).
 
-1. **User Registration & Login** — login/register pages, `useAuth` hook + `AuthContext` (token in localStorage + `novacart_authed` flag cookie for Edge middleware), route guard. ✅
-2. **Product Browsing** — 12 seed products / 5 categories, server-side search + category filter + 4 sort modes, dynamic specs table from metadata jsonb. ✅
+1. **User Registration & Login** — login/register pages, `useAuth` hook + `AuthContext` (JWT in HttpOnly cookie, `novacart_authed` flag cookie for Edge middleware), route guard. ✅
+2. **Product Browsing** — 12 seed products / 5 categories from PostgreSQL, server-side search + category filter + 4 sort modes, dynamic specs table from metadata jsonb, **Redis-cached product list** (60s TTL). Square Catalogue API integration planned for P2. ✅
 3. **Shopping Cart** — `Cart`/`CartItem` entities, CartService CRUD with stock boundaries, `CartContext` + cart page. ✅
-4. **Checkout & Stripe Payment** — `PaymentMethod`/`Payment`/`PaymentWebhook` entities, Strategy-pattern provider, `ProcessCheckoutAsync` (pending order + Stripe session), `HandleWebhookAsync` (signature verify + idempotent unique index + transactional stock decrement + cart clear). ✅
-5. **Order History** — `OrderService` with ownership checks, expandable cards with lazy-loaded receipts and frozen pricing. ✅
+4. **Checkout & Stripe Payment** — `PaymentMethod`/`Payment`/`PaymentWebhook` entities, Strategy-pattern provider, `ProcessCheckoutAsync` (pending order + Stripe session), `HandleWebhookAsync` (signature verify + idempotent unique index + transactional stock decrement + cart clear). Local webhook testing documented in `docs/STRIPE_WEBHOOK_LOCAL.md`. ✅
+5. **Order History** — `OrderService` with ownership checks, expandable cards with lazy-loaded receipts and frozen pricing, **Redis-cached order list/detail** (30s TTL with invalidation on new orders). ✅
 
 ---
 
@@ -379,6 +385,7 @@ This is the recommended continuation plan. Work in **vertical slices**: database
 - [ ] **P2-4 Guest cart:** session cookie, anonymous cart resolution, merge-on-login and stock-conflict handling.
 - [ ] **P2-12 Advanced search:** price range, multi-category and tag/attribute facets with URL-driven filters and GIN indexes.
 - [ ] **P2-9 Analytics:** revenue/order summaries, sales over time, best sellers and low-stock data; implement admin charts/dashboard.
+- [ ] **P2-13 Square Catalogue API:** Integrate Square Catalogue API (sandbox) as a product data source. Create `ISquareCatalogueService` to fetch/sync products from Square; merge with or replace DB seed data. Admin UI toggle or scheduled import. NuGet: `Square`.
 - [ ] **P2-6 Email:** send paid/shipped/cancelled notifications through a background queue/service so webhook processing is not blocked.
 - [ ] **P2-10 PWA:** Service Worker, offline shell/static caching and installability/Lighthouse verification.
 - [ ] **P2-11 Testing:** `WebApplicationFactory` RBAC/API tests plus React Testing Library component/context coverage.
@@ -441,9 +448,9 @@ this section records what's left. Do P3 **after** the P2 features, except CI/CD 
 - [ ] Nested routing/route-guard refinement (customer vs admin layouts; loading/error boundaries per segment).
 - [ ] A11y + responsive audit across breakpoints (mobile/tablet/desktop) per the P14 non-functional reqs.
 
-### P3-5 — Performance & caching — 🔴
-**Goal:** Use the Redis that's already wired but currently idle.
-- [ ] **Redis cache** for the product list and recent orders (README P1 mentioned Redis-cached recent orders; not yet implemented — pick it up here). Cache-aside with sensible TTLs + invalidation on writes.
+### P3-5 — Performance & caching — 🟡
+**Goal:** Performance optimisation beyond the baseline Redis caching.
+- [x] **Redis cache** for product list (60s TTL) and order list/detail (30s TTL) with cache-aside and invalidation on writes. ✅ *Done in P1 completion.*
 - [ ] Response compression, HTTP caching headers for static/product responses.
 - [ ] DB: confirm the ER's planned indexes exist for hot queries (orders by user+status, product filters).
 

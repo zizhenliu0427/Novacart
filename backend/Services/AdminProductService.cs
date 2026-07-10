@@ -20,8 +20,13 @@ public interface IAdminProductService
 public sealed class AdminProductService : IAdminProductService
 {
     private readonly AppDbContext _db;
+    private readonly IRedisCacheService _cache;
 
-    public AdminProductService(AppDbContext db) => _db = db;
+    public AdminProductService(AppDbContext db, IRedisCacheService cache)
+    {
+        _db = db;
+        _cache = cache;
+    }
 
     public async Task<PagedResult<AdminProductDto>> GetAllAsync(
         string? q, bool? isActive, int page, int pageSize)
@@ -96,6 +101,7 @@ public sealed class AdminProductService : IAdminProductService
 
         _db.Products.Add(product);
         await SaveAsync();
+        await _cache.RemoveByPrefixAsync("products:list:");
         await ReloadCategoryAsync(product);
         return Map(product);
     }
@@ -123,6 +129,7 @@ public sealed class AdminProductService : IAdminProductService
         product.UpdatedAt = DateTime.UtcNow;
 
         await SaveAsync();
+        await _cache.RemoveByPrefixAsync("products:list:");
         await ReloadCategoryAsync(product);
         return Map(product);
     }
@@ -138,6 +145,7 @@ public sealed class AdminProductService : IAdminProductService
         product.IsActive = false;
         product.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
+        await _cache.RemoveByPrefixAsync("products:list:");
     }
 
     private async Task ValidateReferencesAsync(AdminProductUpsertRequest request, Guid? currentId)

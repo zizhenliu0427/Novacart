@@ -8,15 +8,14 @@ import {
   useMemo,
   useState,
 } from 'react';
-import type { AuthResponse, LoginRequest, RegisterRequest, UserDto } from '@/types/auth';
+import type { LoginRequest, RegisterRequest, UserDto } from '@/types/auth';
 import { apiCall } from '@/lib/api';
-import { clearToken, getToken, setToken } from '@/lib/auth';
+import { clearToken, setToken } from '@/lib/auth';
 
 /* ─── Types ─────────────────────────────────────────────────── */
 
 interface AuthContextValue {
   user: UserDto | null;
-  token: string | null;
   isLoading: boolean;
   login: (req: LoginRequest) => Promise<void>;
   register: (req: RegisterRequest) => Promise<void>;
@@ -31,76 +30,66 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserDto | null>(null);
-  const [token, setTokenState] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true); // true until initial /me resolves
 
-  /** Persist token + update state together. */
-  const applyToken = useCallback((t: string | null) => {
-    if (t) {
-      setToken(t);
-    } else {
-      clearToken();
-    }
-    setTokenState(t);
-  }, []);
-
-  /** On mount, re-hydrate from localStorage and verify the token is still valid. */
+  /**
+   * On mount, call GET /auth/me (cookie sent automatically) to determine
+   * if the user has a valid session.
+   */
   useEffect(() => {
-    const stored = getToken();
-    if (!stored) {
-      setIsLoading(false);
-      return;
-    }
-    setTokenState(stored);
-    apiCall<UserDto>('/auth/me', { token: stored })
-      .then(setUser)
+    apiCall<UserDto>('/auth/me')
+      .then((u) => {
+        setUser(u);
+        // Ensure the flag cookie is in sync (e.g. after hard refresh).
+        setToken('');
+      })
       .catch(() => {
-        // Token expired or invalid — clear silently.
-        applyToken(null);
+        // No valid session — clear user state and flag cookie silently.
         setUser(null);
+        clearToken();
       })
       .finally(() => setIsLoading(false));
-  }, [applyToken]);
+  }, []);
 
-  const login = useCallback(
-    async (req: LoginRequest) => {
-      const res = await apiCall<AuthResponse>('/auth/login', {
-        method: 'POST',
-        body: req,
-      });
-      applyToken(res.token);
-      setUser(res.user);
-    },
-    [applyToken],
-  );
+  const login = useCallback(async (req: LoginRequest) => {
+    // POST to /auth/login — backend sets the HttpOnly JWT cookie via Set-Cookie.
+    await apiCall<void>('/auth/login', {
+      method: 'POST',
+      body: req,
+    });
+    // Fetch user profile now that the cookie is set.
+    const me = await apiCall<UserDto>('/auth/me');
+    setUser(me);
+    // Set the lightweight flag cookie for Edge middleware.
+    setToken('');
+  }, []);
 
-  const register = useCallback(
-    async (req: RegisterRequest) => {
-      const res = await apiCall<AuthResponse>('/auth/register', {
-        method: 'POST',
-        body: req,
-      });
-      applyToken(res.token);
-      setUser(res.user);
-    },
-    [applyToken],
-  );
+  const register = useCallback(async (req: RegisterRequest) => {
+    // POST to /auth/register — backend sets the HttpOnly JWT cookie via Set-Cookie.
+    await apiCall<void>('/auth/register', {
+      method: 'POST',
+      body: req,
+    });
+    // Fetch user profile now that the cookie is set.
+    const me = await apiCall<UserDto>('/auth/me');
+    setUser(me);
+    // Set the lightweight flag cookie for Edge middleware.
+    setToken('');
+  }, []);
 
   const logout = useCallback(async () => {
-    const t = token;
-    // Optimistically clear before the network call so the UI snaps immediately.
-    applyToken(null);
+    // Optimistically clear the UI immediately.
     setUser(null);
-    if (t) {
-      await apiCall('/auth/logout', { method: 'POST', token: t }).catch(() => {
-        // Best-effort — token is already gone client-side.
-      });
-    }
-  }, [token, applyToken]);
+    clearToken();
+    // POST to /auth/logout — backend clears the HttpOnly JWT cookie.
+    await apiCall('/auth/logout', { method: 'POST' }).catch(() => {
+      // Best-effort — flag cookie is already gone client-side.
+    });
+  }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, token, isLoading, login, register, logout }),
-    [user, token, isLoading, login, register, logout],
+    () => ({ user, isLoading, login, register, logout }),
+    [user, isLoading, login, register, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

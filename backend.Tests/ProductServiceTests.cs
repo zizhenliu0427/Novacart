@@ -17,7 +17,7 @@ public class ProductServiceTests
     public async Task GetAllAsync_ReturnsAllActiveProducts()
     {
         using var db = TestDbFactory.Create();
-        var svc = new ProductService(db, new PricingService());
+        var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
 
         var result = await svc.GetAllAsync(null, null, null, page: 1, pageSize: 50);
 
@@ -30,7 +30,7 @@ public class ProductServiceTests
     public async Task GetAllAsync_PaginatesCorrectly()
     {
         using var db = TestDbFactory.Create();
-        var svc = new ProductService(db, new PricingService());
+        var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
 
         var page1 = await svc.GetAllAsync(null, null, null, page: 1, pageSize: 5);
         var page2 = await svc.GetAllAsync(null, null, null, page: 2, pageSize: 5);
@@ -48,7 +48,7 @@ public class ProductServiceTests
     public async Task GetAllAsync_FiltersByCategory()
     {
         using var db = TestDbFactory.Create();
-        var svc = new ProductService(db, new PricingService());
+        var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
 
         // Category 1 = Electronics (3 products seeded)
         var result = await svc.GetAllAsync(null, categoryId: 1, null, page: 1, pageSize: 50);
@@ -61,7 +61,7 @@ public class ProductServiceTests
     public async Task GetAllAsync_EmptyResultForNonexistentCategory()
     {
         using var db = TestDbFactory.Create();
-        var svc = new ProductService(db, new PricingService());
+        var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
 
         var result = await svc.GetAllAsync(null, categoryId: 999, null, page: 1, pageSize: 50);
 
@@ -75,7 +75,7 @@ public class ProductServiceTests
     public async Task GetAllAsync_SortsByPriceAscending()
     {
         using var db = TestDbFactory.Create();
-        var svc = new ProductService(db, new PricingService());
+        var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
 
         var result = await svc.GetAllAsync(null, null, "price_asc", page: 1, pageSize: 50);
 
@@ -86,7 +86,7 @@ public class ProductServiceTests
     public async Task GetAllAsync_SortsByPriceDescending()
     {
         using var db = TestDbFactory.Create();
-        var svc = new ProductService(db, new PricingService());
+        var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
 
         var result = await svc.GetAllAsync(null, null, "price_desc", page: 1, pageSize: 50);
 
@@ -97,7 +97,7 @@ public class ProductServiceTests
     public async Task GetAllAsync_SortsByNameAscending()
     {
         using var db = TestDbFactory.Create();
-        var svc = new ProductService(db, new PricingService());
+        var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
 
         var result = await svc.GetAllAsync(null, null, "name_asc", page: 1, pageSize: 50);
 
@@ -110,7 +110,7 @@ public class ProductServiceTests
     public async Task GetByIdAsync_ReturnsProductWithMetadata()
     {
         using var db = TestDbFactory.Create();
-        var svc = new ProductService(db, new PricingService());
+        var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
         var product = await TestDbFactory.GetFirstProductAsync(db);
 
         var detail = await svc.GetByIdAsync(product.Id);
@@ -126,7 +126,7 @@ public class ProductServiceTests
     public async Task GetByIdAsync_ThrowsForNonexistentProduct()
     {
         using var db = TestDbFactory.Create();
-        var svc = new ProductService(db, new PricingService());
+        var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
 
         var act = () => svc.GetByIdAsync(Guid.NewGuid());
 
@@ -138,7 +138,7 @@ public class ProductServiceTests
     public async Task GetByIdAsync_ThrowsForInactiveProduct()
     {
         using var db = TestDbFactory.Create();
-        var svc = new ProductService(db, new PricingService());
+        var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
 
         // Deactivate the first product
         var product = await TestDbFactory.GetFirstProductAsync(db);
@@ -174,7 +174,7 @@ public class ProductServiceTests
     public void GetEffectivePrice_DelegatesToResolvePrice()
     {
         using var db = TestDbFactory.Create();
-        var svc = new ProductService(db, new PricingService());
+        var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
         var product = new Product
         {
             Id = Guid.NewGuid(),
@@ -193,7 +193,7 @@ public class ProductServiceTests
     public async Task GetAllAsync_DtoContainsCategoryName()
     {
         using var db = TestDbFactory.Create();
-        var svc = new ProductService(db, new PricingService());
+        var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
 
         var result = await svc.GetAllAsync(null, categoryId: 1, null, page: 1, pageSize: 1);
 

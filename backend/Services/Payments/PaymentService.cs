@@ -16,15 +16,18 @@ public class PaymentService : IPaymentService
 {
     private readonly AppDbContext _db;
     private readonly IEnumerable<IPaymentStrategy> _strategies;
+    private readonly IRedisCacheService _cache;
     private readonly string _stripeWebhookSecret;
 
     public PaymentService(
         AppDbContext db,
         IEnumerable<IPaymentStrategy> strategies,
+        IRedisCacheService cache,
         IConfiguration config)
     {
         _db = db;
         _strategies = strategies;
+        _cache = cache;
         _stripeWebhookSecret = config["Stripe:WebhookSecret"] ?? string.Empty;
     }
 
@@ -240,6 +243,10 @@ public class PaymentService : IPaymentService
 
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();
+
+            // Invalidate caches so the user sees updated order list and product stock.
+            await _cache.RemoveByPrefixAsync($"orders:user:{order.UserId}:");
+            await _cache.RemoveByPrefixAsync("products:list:");
         }
         catch (Exception ex)
         {

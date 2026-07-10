@@ -17,17 +17,24 @@ public interface IProductService
     /// P2 dynamic pricing rules plug in here without refactoring callers.
     /// </summary>
     decimal GetEffectivePrice(Product product);
+
+    /// <summary>Invalidate all cached product lists (call after admin product changes).</summary>
+    Task InvalidateProductCacheAsync();
 }
 
 public class ProductService : IProductService
 {
     private readonly AppDbContext _db;
     private readonly IPricingService _pricing;
+    private readonly IRedisCacheService _cache;
 
-    public ProductService(AppDbContext db, IPricingService pricing)
+    private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(60);
+
+    public ProductService(AppDbContext db, IPricingService pricing, IRedisCacheService cache)
     {
         _db = db;
         _pricing = pricing;
+        _cache = cache;
     }
 
     // ── Static helper (safe inside EF LINQ expressions) ───────
@@ -37,6 +44,12 @@ public class ProductService : IProductService
     public async Task<PagedResult<ProductListItemDto>> GetAllAsync(
         string? q, int? categoryId, string? sort, int page, int pageSize)
     {
+        // Build a cache key that includes all query parameters
+        var cacheKey = $"products:list:q={q ?? ""}:c={categoryId}:s={sort ?? "newest"}:p{page}:s{pageSize}";
+
+        var cached = await _cache.GetAsync<PagedResult<ProductListItemDto>>(cacheKey);
+        if (cached is not null) return cached;
+
         var query = _db.Products
             .Include(p => p.Category)
             .Where(p => p.IsActive);
@@ -87,13 +100,16 @@ public class ProductService : IProductService
             Tags          = p.Tags,
         }).ToList();
 
-        return new PagedResult<ProductListItemDto>
+        var result = new PagedResult<ProductListItemDto>
         {
             Items      = items,
             TotalCount = total,
             Page       = page,
             PageSize   = pageSize,
         };
+
+        await _cache.SetAsync(cacheKey, result, CacheTtl);
+        return result;
     }
 
     public async Task<ProductDetailDto> GetByIdAsync(Guid id)
@@ -123,6 +139,11 @@ public class ProductService : IProductService
 
     /// <inheritdoc/>
     public decimal GetEffectivePrice(Product product) => ResolvePrice(product);
+
+    public async Task InvalidateProductCacheAsync()
+    {
+        await _cache.RemoveByPrefixAsync("products:list:");
+    }
 
     /// <summary>
     /// Load the pricing rules that could apply to any of the given products:

@@ -30,59 +30,56 @@ const CartContext = createContext<CartContextValue | null>(null);
 /* ─── Provider ───────────────────────────────────────────────── */
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
-  const { user, token } = useAuth();
+  const { user } = useAuth();
   const [cart, setCart] = useState<Cart | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   /** Load cart whenever the user logs in. Clear when logged out. */
   useEffect(() => {
-    if (!user || !token) {
+    if (!user) {
       setCart(null);
       return;
     }
     setIsLoading(true);
-    apiCall<Cart>('/cart', { token })
+    apiCall<Cart>('/cart')
       .then(setCart)
       .catch(() => setCart(null))
       .finally(() => setIsLoading(false));
-  }, [user, token]);
+  }, [user]);
 
   const addItem = useCallback(
     async (productId: string, quantity = 1) => {
-      if (!token) throw new Error('Must be logged in to add to cart');
+      if (!user) throw new Error('Must be logged in to add to cart');
       const updated = await apiCall<Cart>('/cart/items', {
         method: 'POST',
-        token,
         body: { productId, quantity },
       });
       setCart(updated);
     },
-    [token],
+    [user],
   );
 
   const updateItem = useCallback(
     async (cartItemId: string, quantity: number) => {
-      if (!token) return;
+      if (!user) return;
       const updated = await apiCall<Cart>(`/cart/items/${cartItemId}`, {
         method: 'PUT',
-        token,
         body: { quantity },
       });
       setCart(updated);
     },
-    [token],
+    [user],
   );
 
   const removeItem = useCallback(
     async (cartItemId: string) => {
-      if (!token) return;
+      if (!user) return;
       const updated = await apiCall<Cart>(`/cart/items/${cartItemId}`, {
         method: 'DELETE',
-        token,
       });
       setCart(updated);
     },
-    [token],
+    [user],
   );
 
   const totalItems = useMemo(() => cart?.totalItems ?? 0, [cart]);

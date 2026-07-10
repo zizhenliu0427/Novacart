@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/contexts/CartContext';
-import { CartIcon, PackageIcon, GridIcon, SparkIcon, UserIcon } from '@/components/icons';
+import { CartIcon, PackageIcon, GridIcon, SparkIcon, UserIcon, MenuIcon, CloseIcon } from '@/components/icons';
 
 const navLinks = [
   { href: '/products', label: 'Products', Icon: GridIcon },
@@ -17,9 +17,11 @@ export function HeaderNav() {
   const { totalItems } = useCart();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   async function handleLogout() {
     setMenuOpen(false);
+    setMobileOpen(false);
     await logout();
     router.push('/');
   }
@@ -35,8 +37,8 @@ export function HeaderNav() {
           <span className="text-lg">Novacart</span>
         </Link>
 
-        {/* Nav */}
-        <nav className="flex items-center gap-1 text-sm">
+        {/* Desktop nav */}
+        <nav className="hidden items-center gap-1 text-sm sm:flex">
           {navLinks.map(({ href, label, Icon }) => (
             <Link
               key={href}
@@ -44,7 +46,7 @@ export function HeaderNav() {
               className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-ink-muted transition hover:bg-bg-subtle hover:text-ink"
             >
               <Icon className="h-[18px] w-[18px]" />
-              <span className="hidden sm:inline">{label}</span>
+              <span>{label}</span>
             </Link>
           ))}
 
@@ -55,7 +57,7 @@ export function HeaderNav() {
             className="relative ml-1 flex items-center gap-1.5 rounded-lg px-3 py-2 text-ink-muted transition hover:bg-bg-subtle hover:text-ink"
           >
             <CartIcon className="h-[18px] w-[18px]" />
-            <span className="hidden sm:inline">Cart</span>
+            <span>Cart</span>
             {totalItems > 0 && (
               <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-accent-contrast">
                 {totalItems > 99 ? '99+' : totalItems}
@@ -63,7 +65,7 @@ export function HeaderNav() {
             )}
           </Link>
 
-          {/* Auth area */}
+          {/* Auth area (desktop) */}
           {!isLoading && (
             <>
               {user ? (
@@ -78,7 +80,7 @@ export function HeaderNav() {
                     <span className="grid h-7 w-7 place-items-center rounded-full bg-accent-weak text-accent">
                       <UserIcon className="h-4 w-4" />
                     </span>
-                    <span className="hidden max-w-[120px] truncate sm:inline">{user.fullName.split(' ')[0]}</span>
+                    <span className="max-w-[120px] truncate">{user.fullName.split(' ')[0]}</span>
                   </button>
 
                   {menuOpen && (
@@ -143,13 +145,107 @@ export function HeaderNav() {
                   className="ml-1 flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-ink-muted transition hover:bg-bg-subtle hover:text-ink"
                 >
                   <UserIcon className="h-[18px] w-[18px]" />
-                  <span className="hidden sm:inline">Sign in</span>
+                  <span>Sign in</span>
                 </Link>
               )}
             </>
           )}
         </nav>
+
+        {/* Mobile: cart badge + hamburger */}
+        <div className="flex items-center gap-1 sm:hidden">
+          {/* Mobile cart */}
+          <Link
+            href="/cart"
+            aria-label={`Cart${totalItems > 0 ? `, ${totalItems} items` : ''}`}
+            className="relative rounded-lg p-2 text-ink-muted transition hover:bg-bg-subtle hover:text-ink"
+          >
+            <CartIcon className="h-5 w-5" />
+            {totalItems > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[9px] font-bold text-accent-contrast">
+                {totalItems > 99 ? '99+' : totalItems}
+              </span>
+            )}
+          </Link>
+          <button
+            id="mobile-menu-button"
+            onClick={() => setMobileOpen((o) => !o)}
+            aria-expanded={mobileOpen}
+            aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+            className="rounded-lg p-2 text-ink-muted transition hover:bg-bg-subtle hover:text-ink"
+          >
+            {mobileOpen ? <CloseIcon className="h-5 w-5" /> : <MenuIcon className="h-5 w-5" />}
+          </button>
+        </div>
       </div>
+
+      {/* Mobile slide-down menu */}
+      {mobileOpen && (
+        <nav className="border-t border-border bg-surface px-4 pb-4 pt-2 sm:hidden">
+          <div className="flex flex-col gap-1 text-sm">
+            {navLinks.map(({ href, label, Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                onClick={() => setMobileOpen(false)}
+                className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-ink-muted transition hover:bg-bg-subtle hover:text-ink"
+              >
+                <Icon className="h-[18px] w-[18px]" />
+                {label}
+              </Link>
+            ))}
+
+            {!isLoading && user && (
+              <>
+                <div className="my-1 border-t border-border" />
+                {[
+                  { href: '/account', label: 'Account' },
+                  { href: '/wishlist', label: 'Wishlist' },
+                ].map((l) => (
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    onClick={() => setMobileOpen(false)}
+                    className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-ink-muted transition hover:bg-bg-subtle hover:text-ink"
+                  >
+                    {l.label}
+                  </Link>
+                ))}
+                {user.roles?.some((r) => r === 'admin' || r === 'sysadmin') && (
+                  <Link
+                    href="/admin"
+                    onClick={() => setMobileOpen(false)}
+                    className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 font-medium text-accent transition hover:bg-accent-weak"
+                  >
+                    Admin dashboard
+                  </Link>
+                )}
+                <div className="my-1 border-t border-border" />
+                <button
+                  onClick={handleLogout}
+                  className="w-full rounded-lg px-3 py-2.5 text-left text-sm text-ink-muted transition hover:bg-bg-subtle hover:text-ink"
+                >
+                  Sign out
+                </button>
+              </>
+            )}
+
+            {!isLoading && !user && (
+              <>
+                <div className="my-1 border-t border-border" />
+                <Link
+                  href="/login"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-ink-muted transition hover:bg-bg-subtle hover:text-ink"
+                >
+                  <UserIcon className="h-[18px] w-[18px]" />
+                  Sign in
+                </Link>
+              </>
+            )}
+          </div>
+        </nav>
+      )}
     </header>
   );
 }

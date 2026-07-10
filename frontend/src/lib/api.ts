@@ -5,7 +5,6 @@ const API_BASE = '/api';
 interface ApiOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
-  token?: string;
 }
 
 interface ApiErrorPayload {
@@ -16,24 +15,21 @@ interface ApiErrorPayload {
 }
 
 export async function apiCall<T>(endpoint: string, options: ApiOptions = {}): Promise<T> {
-  const { method = 'GET', body, token } = options;
+  const { method = 'GET', body } = options;
 
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
   };
 
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
   const res = await fetch(`${API_BASE}${endpoint}`, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
+    credentials: 'include', // Send HttpOnly cookies automatically.
   });
 
   if (res.status === 401) {
-    // An invalid/expired token requires re-authentication.
+    // An invalid/expired cookie requires re-authentication.
     if (typeof window !== 'undefined') {
       clearToken();
       window.location.href = '/login';

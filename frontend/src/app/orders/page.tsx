@@ -13,7 +13,7 @@ import { Order } from '@/types/order';
 import { apiCall } from '@/lib/api';
 
 export default function OrdersPage() {
-  const { user, token } = useAuth();
+  const { user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
@@ -21,11 +21,11 @@ export default function OrdersPage() {
   const [isLoadingDetails, setIsLoadingDetails] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!token) return;
+    if (!user) return;
 
     async function loadOrders() {
       try {
-        const res = await apiCall<PagedResult<Order>>('/orders?page=1&pageSize=50', { token: token! });
+        const res = await apiCall<PagedResult<Order>>('/orders?page=1&pageSize=50');
         setOrders(res.items);
       } catch (err) {
         console.error('Failed loading orders:', err);
@@ -35,7 +35,7 @@ export default function OrdersPage() {
     }
 
     loadOrders();
-  }, [token]);
+  }, [user]);
 
   if (!user) {
     return (
@@ -98,7 +98,7 @@ export default function OrdersPage() {
     if (!detailedOrders[orderId]) {
       setIsLoadingDetails(orderId);
       try {
-        const detail = await apiCall<Order>(`/orders/${orderId}`, { token: token! });
+        const detail = await apiCall<Order>(`/orders/${orderId}`);
         setDetailedOrders((prev) => ({ ...prev, [orderId]: detail }));
       } catch (err) {
         console.error('Failed loading order details:', err);

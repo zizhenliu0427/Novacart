@@ -69,7 +69,7 @@ function toForm(product: AdminProduct): ProductFormState {
 }
 
 export default function AdminProductsPage() {
-  const { token } = useAuth();
+  const { user } = useAuth();
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -97,7 +97,7 @@ export default function AdminProductsPage() {
   }, [query]);
 
   const loadProducts = useCallback(async () => {
-    if (!token) return;
+    if (!user) return;
     setLoading(true);
     setError(null);
     const params = new URLSearchParams({ page: String(page), pageSize: '20' });
@@ -105,7 +105,7 @@ export default function AdminProductsPage() {
     if (status !== 'all') params.set('isActive', String(status === 'active'));
 
     try {
-      const data = await apiCall<PagedResult<AdminProduct>>(`/admin/products?${params}`, { token });
+      const data = await apiCall<PagedResult<AdminProduct>>(`/admin/products?${params}`);
       setProducts(data.items);
       setTotalCount(data.totalCount);
       setTotalPages(data.totalPages);
@@ -114,18 +114,18 @@ export default function AdminProductsPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, page, debouncedQuery, status]);
+  }, [user, page, debouncedQuery, status]);
 
   useEffect(() => {
     loadProducts();
   }, [loadProducts]);
 
   useEffect(() => {
-    if (!token) return;
-    apiCall<CategoryOption[]>('/admin/products/categories', { token })
+    if (!user) return;
+    apiCall<CategoryOption[]>('/admin/products/categories')
       .then(setCategories)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load categories.'));
-  }, [token]);
+  }, [user]);
 
   function openCreate() {
     setEditing(null);
@@ -150,7 +150,7 @@ export default function AdminProductsPage() {
 
   async function submitProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!token) return;
+    if (!user) return;
     setFormError(null);
 
     const price = Number(form.price);
@@ -190,12 +190,12 @@ export default function AdminProductsPage() {
     try {
       if (editing) {
         await apiCall<AdminProduct>(`/admin/products/${editing.id}`, {
-          method: 'PUT', token, body: request,
+          method: 'PUT', body: request,
         });
         setNotice(`Updated ${request.name}.`);
       } else {
         await apiCall<AdminProduct>('/admin/products', {
-          method: 'POST', token, body: request,
+          method: 'POST', body: request,
         });
         setNotice(`Created ${request.name}.`);
       }
@@ -210,10 +210,10 @@ export default function AdminProductsPage() {
   }
 
   async function deactivate(product: AdminProduct) {
-    if (!token || !window.confirm(`Deactivate “${product.name}”? It will disappear from the storefront.`)) return;
+    if (!user || !window.confirm(`Deactivate "${product.name}"? It will disappear from the storefront.`)) return;
     setError(null);
     try {
-      await apiCall<void>(`/admin/products/${product.id}`, { method: 'DELETE', token });
+      await apiCall<void>(`/admin/products/${product.id}`, { method: 'DELETE' });
       setNotice(`Deactivated ${product.name}.`);
       await loadProducts();
     } catch (err) {

@@ -49,7 +49,7 @@ function statusTone(status: string): BadgeTone {
 }
 
 export default function AdminOrdersPage() {
-  const { token } = useAuth();
+  const { user } = useAuth();
   const [orders, setOrders] = useState<AdminOrderSummary[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -76,7 +76,7 @@ export default function AdminOrdersPage() {
   }, [query]);
 
   const loadOrders = useCallback(async () => {
-    if (!token) return;
+    if (!user) return;
     setLoading(true);
     setError(null);
     const params = new URLSearchParams({ page: String(page), pageSize: '20' });
@@ -84,7 +84,7 @@ export default function AdminOrdersPage() {
     if (status !== 'all') params.set('status', status);
 
     try {
-      const data = await apiCall<PagedResult<AdminOrderSummary>>(`/admin/orders?${params}`, { token });
+      const data = await apiCall<PagedResult<AdminOrderSummary>>(`/admin/orders?${params}`);
       setOrders(data.items);
       setTotalCount(data.totalCount);
       setTotalPages(data.totalPages);
@@ -93,19 +93,19 @@ export default function AdminOrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, page, debouncedQuery, status]);
+  }, [user, page, debouncedQuery, status]);
 
   useEffect(() => {
     loadOrders();
   }, [loadOrders]);
 
   async function openDetail(orderId: string) {
-    if (!token) return;
+    if (!user) return;
     setDetailLoading(true);
     setDetailError(null);
     setDetail(null);
     try {
-      const data = await apiCall<AdminOrderDetail>(`/admin/orders/${orderId}`, { token });
+      const data = await apiCall<AdminOrderDetail>(`/admin/orders/${orderId}`);
       setDetail(data);
     } catch (err) {
       setDetailError(err instanceof Error ? err.message : 'Failed to load order detail.');
@@ -121,7 +121,7 @@ export default function AdminOrdersPage() {
   }
 
   async function advanceStatus() {
-    if (!token || !detail) return;
+    if (!user || !detail) return;
     const next = NEXT_STATUS[detail.currentStatus];
     if (!next) return;
     setAdvancing(true);
@@ -129,7 +129,6 @@ export default function AdminOrdersPage() {
     try {
       const updated = await apiCall<AdminOrderDetail>(`/admin/orders/${detail.id}/status`, {
         method: 'PATCH',
-        token,
         body: { toStatus: next } satisfies UpdateOrderStatusBody,
       });
       setDetail(updated);
@@ -143,14 +142,13 @@ export default function AdminOrdersPage() {
   }
 
   async function cancelOrder() {
-    if (!token || !detail) return;
+    if (!user || !detail) return;
     if (!window.confirm(`Cancel order ${detail.orderNumber}? This cannot be undone.`)) return;
     setAdvancing(true);
     setDetailError(null);
     try {
       const updated = await apiCall<AdminOrderDetail>(`/admin/orders/${detail.id}/status`, {
         method: 'PATCH',
-        token,
         body: { toStatus: 'cancelled' } satisfies UpdateOrderStatusBody,
       });
       setDetail(updated);

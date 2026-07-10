@@ -12,20 +12,19 @@ import { formatPrice } from '@/types/product';
 import { apiCall } from '@/lib/api';
 
 export default function CartPage() {
-  const { user, token } = useAuth();
+  const { user } = useAuth();
   const { cart, isLoading, updateItem, removeItem } = useCart();
   const [busy, setBusy] = useState<string | null>(null); // cartItemId being modified
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   async function handleCheckout() {
-    if (!token) return;
+    if (!user) return;
     setIsCheckingOut(true);
     setCheckoutError(null);
     try {
       const res = await apiCall<{ redirectUrl: string }>('/checkout', {
         method: 'POST',
-        token,
         body: {
           successUrl: window.location.origin + '/checkout/success',
           cancelUrl: window.location.origin + '/checkout/cancel',

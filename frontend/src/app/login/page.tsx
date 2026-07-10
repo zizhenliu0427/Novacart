@@ -32,7 +32,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="mx-auto max-w-sm py-12">
+    <div className="mx-auto w-full max-w-sm px-4 py-12">
       {/* Logo */}
       <div className="mb-8 flex flex-col items-center gap-3 text-center">
         <span className="grid h-12 w-12 place-items-center rounded-xl bg-accent text-accent-contrast">

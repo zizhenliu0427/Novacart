@@ -19,7 +19,7 @@ interface UserProfile {
 
 /** P2-2 (Customer profile) — edit full name via GET/PUT /api/users/me. */
 export default function AccountPage() {
-  const { user, token, isLoading } = useAuth();
+  const { user, isLoading } = useAuth();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [roles, setRoles] = useState<string[]>([]);
@@ -30,8 +30,8 @@ export default function AccountPage() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (!token || loaded) return;
-    apiCall<UserProfile>('/users/me', { token })
+    if (!user || loaded) return;
+    apiCall<UserProfile>('/users/me')
       .then((profile) => {
         setFullName(profile.fullName);
         setEmail(profile.email);
@@ -42,7 +42,7 @@ export default function AccountPage() {
         setError(err instanceof Error ? err.message : 'Failed to load profile.');
         setLoaded(true);
       });
-  }, [token, loaded]);
+  }, [user, loaded]);
 
   if (isLoading) return <p className="text-sm text-ink-muted">Loading…</p>;
 
@@ -65,13 +65,12 @@ export default function AccountPage() {
 
   async function submitProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!token) return;
+    if (!user) return;
     setError(null);
     setSaving(true);
     try {
       const updated = await apiCall<UserProfile>('/users/me', {
         method: 'PUT',
-        token,
         body: { fullName },
       });
       setFullName(updated.fullName);

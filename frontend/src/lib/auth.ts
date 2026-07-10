@@ -1,27 +1,39 @@
 /**
- * Token helpers — thin wrappers around localStorage so the rest of the app
- * never imports localStorage directly (easier to swap to cookie storage later).
+ * Auth helpers — HttpOnly cookie-based authentication.
  *
- * Also maintains a lightweight "novacart_authed=1" session cookie so the
- * Next.js Edge middleware can guard protected routes without accessing localStorage.
+ * The JWT is now stored in an HttpOnly cookie (`novacart_jwt`) set by the
+ * backend on login/register and cleared on logout. The browser sends it
+ * automatically with every request — the frontend never sees or handles
+ * the raw token.
+ *
+ * These helpers only manage a lightweight `novacart_authed=1` flag cookie
+ * so the Next.js Edge middleware can guard protected routes without
+ * needing access to the HttpOnly JWT cookie.
  */
 
-const TOKEN_KEY = 'novacart_token';
 const AUTH_COOKIE = 'novacart_authed';
 
+/**
+ * Returns `null` always — the JWT lives in an HttpOnly cookie that
+ * JavaScript cannot (and should not) access.
+ */
 export function getToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(TOKEN_KEY);
+  return null;
 }
 
-export function setToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
-  // Set a flag cookie (no token data) for Edge middleware route guarding.
+/**
+ * Sets the `novacart_authed` flag cookie so Edge middleware knows the
+ * user has authenticated. Does NOT store the JWT — the backend handles
+ * that via a Set-Cookie header.
+ */
+export function setToken(_token: string): void {
   document.cookie = `${AUTH_COOKIE}=1; path=/; samesite=strict`;
 }
 
+/**
+ * Expires the `novacart_authed` flag cookie. The backend is responsible
+ * for clearing the HttpOnly JWT cookie via its logout endpoint.
+ */
 export function clearToken(): void {
-  localStorage.removeItem(TOKEN_KEY);
-  // Expire the flag cookie.
   document.cookie = `${AUTH_COOKIE}=; path=/; max-age=0; samesite=strict`;
 }

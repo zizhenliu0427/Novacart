@@ -23,29 +23,29 @@ interface WishlistContextValue {
 const WishlistContext = createContext<WishlistContextValue | undefined>(undefined);
 
 export function WishlistProvider({ children }: { children: React.ReactNode }) {
-  const { token, user } = useAuth();
+  const { user } = useAuth();
   const [items, setItems] = useState<WishlistItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   // Hydrate the wishlist when the user is authenticated.
   useEffect(() => {
-    if (!token || !user) {
+    if (!user) {
       setItems([]);
       return;
     }
     setIsLoading(true);
-    apiCall<WishlistItem[]>('/wishlist', { token })
+    apiCall<WishlistItem[]>('/wishlist')
       .then(setItems)
       .catch(() => setItems([]))
       .finally(() => setIsLoading(false));
-  }, [token, user]);
+  }, [user]);
 
   const productIds = useMemo(() => new Set(items.map((i) => i.productId)), [items]);
 
   const isWishlisted = useCallback((id: string) => productIds.has(id), [productIds]);
 
   const toggle = useCallback(async (id: string) => {
-    if (!token) return;
+    if (!user) return;
     const isAdded = productIds.has(id);
     // Optimistic update
     setItems((prev) =>
@@ -56,19 +56,19 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
 
     try {
       if (isAdded) {
-        await apiCall<void>(`/wishlist/items/${id}`, { method: 'DELETE', token });
+        await apiCall<void>(`/wishlist/items/${id}`, { method: 'DELETE' });
       } else {
-        await apiCall<void>('/wishlist/items', { method: 'POST', token, body: { productId: id } });
+        await apiCall<void>('/wishlist/items', { method: 'POST', body: { productId: id } });
         // Re-fetch to get the full item data (name/price/etc.)
-        const refreshed = await apiCall<WishlistItem[]>('/wishlist', { token });
+        const refreshed = await apiCall<WishlistItem[]>('/wishlist');
         setItems(refreshed);
       }
     } catch {
       // Revert optimistic update on failure by re-fetching.
-      const refreshed = await apiCall<WishlistItem[]>('/wishlist', { token }).catch(() => []);
+      const refreshed = await apiCall<WishlistItem[]>('/wishlist').catch(() => []);
       setItems(refreshed);
     }
-  }, [token, productIds]);
+  }, [user, productIds]);
 
   const value = useMemo(
     () => ({ productIds, items, isWishlisted, toggle, isLoading }),

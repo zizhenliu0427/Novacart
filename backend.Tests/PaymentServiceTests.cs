@@ -53,7 +53,7 @@ public class PaymentServiceTests
     {
         using var db = TestDbFactory.Create();
         var cartSvc = new CartService(db, new PricingService());
-        var paymentSvc = new PaymentService(db, _strategies, _config);
+        var paymentSvc = new PaymentService(db, _strategies, new NullRedisCacheService(), _config);
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
@@ -99,7 +99,7 @@ public class PaymentServiceTests
     public async Task ProcessCheckoutAsync_ThrowsAppException_WhenCartIsEmpty()
     {
         using var db = TestDbFactory.Create();
-        var paymentSvc = new PaymentService(db, _strategies, _config);
+        var paymentSvc = new PaymentService(db, _strategies, new NullRedisCacheService(), _config);
         var userId = await TestDbFactory.SeedTestUserAsync(db);
 
         var request = new CheckoutRequest { SuccessUrl = "http://s", CancelUrl = "http://c" };
@@ -114,7 +114,7 @@ public class PaymentServiceTests
     {
         using var db = TestDbFactory.Create();
         var cartSvc = new CartService(db, new PricingService());
-        var paymentSvc = new PaymentService(db, _strategies, _config);
+        var paymentSvc = new PaymentService(db, _strategies, new NullRedisCacheService(), _config);
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
@@ -161,7 +161,7 @@ public class PaymentServiceTests
     {
         using var db = TestDbFactory.Create();
         var cartSvc = new CartService(db, new PricingService());
-        var paymentSvc = new PaymentService(db, _strategies, _config);
+        var paymentSvc = new PaymentService(db, _strategies, new NullRedisCacheService(), _config);
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
