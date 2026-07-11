@@ -8,7 +8,7 @@ import {
   useMemo,
   useState,
 } from 'react';
-import type { Cart, CartItem } from '@/types/cart';
+import type { Cart } from '@/types/cart';
 import { apiCall } from '@/lib/api';
 import { useAuth } from './AuthContext';
 
@@ -34,52 +34,57 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [cart, setCart] = useState<Cart | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  /** Load cart whenever the user logs in. Clear when logged out. */
+  /** Load/merge cart on login, load anonymous cart on mount/logout. */
   useEffect(() => {
-    if (!user) {
-      setCart(null);
-      return;
+    async function initCart() {
+      setIsLoading(true);
+      try {
+        if (user) {
+          // Trigger merge of guest cart items
+          await apiCall('/cart/merge', { method: 'POST' }).catch(() => {});
+        }
+        const currentCart = await apiCall<Cart>('/cart');
+        setCart(currentCart);
+      } catch {
+        setCart(null);
+      } finally {
+        setIsLoading(false);
+      }
     }
-    setIsLoading(true);
-    apiCall<Cart>('/cart')
-      .then(setCart)
-      .catch(() => setCart(null))
-      .finally(() => setIsLoading(false));
+
+    initCart();
   }, [user]);
 
   const addItem = useCallback(
     async (productId: string, quantity = 1) => {
-      if (!user) throw new Error('Must be logged in to add to cart');
       const updated = await apiCall<Cart>('/cart/items', {
         method: 'POST',
         body: { productId, quantity },
       });
       setCart(updated);
     },
-    [user],
+    [],
   );
 
   const updateItem = useCallback(
     async (cartItemId: string, quantity: number) => {
-      if (!user) return;
       const updated = await apiCall<Cart>(`/cart/items/${cartItemId}`, {
         method: 'PUT',
         body: { quantity },
       });
       setCart(updated);
     },
-    [user],
+    [],
   );
 
   const removeItem = useCallback(
     async (cartItemId: string) => {
-      if (!user) return;
       const updated = await apiCall<Cart>(`/cart/items/${cartItemId}`, {
         method: 'DELETE',
       });
       setCart(updated);
     },
-    [user],
+    [],
   );
 
   const totalItems = useMemo(() => cart?.totalItems ?? 0, [cart]);

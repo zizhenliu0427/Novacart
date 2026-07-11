@@ -20,6 +20,15 @@ public class Order
 
     public string Currency { get; set; } = "AUD";
 
+    // Shipping Address Snapshot (P2-7)
+    public string ShippingName { get; set; } = string.Empty;
+    public string ShippingLine1 { get; set; } = string.Empty;
+    public string? ShippingLine2 { get; set; }
+    public string ShippingCity { get; set; } = string.Empty;
+    public string ShippingState { get; set; } = string.Empty;
+    public string ShippingPostcode { get; set; } = string.Empty;
+    public string ShippingCountry { get; set; } = "Australia";
+
     public string CurrentStatus { get; set; } = OrderStatuses.Pending;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

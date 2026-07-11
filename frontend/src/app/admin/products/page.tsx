@@ -87,6 +87,25 @@ export default function AdminProductsPage() {
   const [form, setForm] = useState<ProductFormState>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  async function triggerSquareSync() {
+    if (!user) return;
+    setSyncing(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await apiCall<{ success: boolean; message: string }>('/admin/products/sync-square', {
+        method: 'POST',
+      });
+      setNotice(res.message);
+      await loadProducts();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to sync with Square.');
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -230,7 +249,12 @@ export default function AdminProductsPage() {
             {loading ? 'Loading catalogue…' : `${totalCount} product${totalCount === 1 ? '' : 's'}`}
           </p>
         </div>
-        <Button onClick={openCreate}>Add product</Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={triggerSquareSync} disabled={syncing}>
+            {syncing ? 'Syncing...' : 'Sync with Square'}
+          </Button>
+          <Button onClick={openCreate}>Add product</Button>
+        </div>
       </div>
 
       {notice && (

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { CartIcon } from '@/components/icons';
+import { CartIcon, HeartIcon, HeartFilledIcon } from '@/components/icons';
 import {
   formatPrice,
   parseMetadata,
@@ -13,7 +13,27 @@ import {
   type Product,
 } from '@/types/product';
 import { useAuth } from '@/contexts/AuthContext';
+import { useWishlist } from '@/contexts/WishlistContext';
 import { useCart } from '@/contexts/CartContext';
+
+function WishlistButton({ productId, productName }: { productId: string; productName: string }) {
+  const { user } = useAuth();
+  const { isWishlisted, toggle } = useWishlist();
+  const router = useRouter();
+  const wishlisted = isWishlisted(productId);
+
+  async function handleClick() {
+    if (!user) { router.push('/login'); return; }
+    await toggle(productId);
+  }
+
+  return (
+    <Button variant="secondary" onClick={handleClick} aria-label={wishlisted ? `Remove ${productName} from wishlist` : `Save ${productName} for later`}>
+      {wishlisted ? <HeartFilledIcon className="h-4 w-4 text-danger" /> : <HeartIcon className="h-4 w-4" />}
+      {wishlisted ? 'Saved' : 'Save for later'}
+    </Button>
+  );
+}
 
 export default function ProductDetailPage({ params }: { params: { id: string } }) {
   const { user } = useAuth();
@@ -159,7 +179,7 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
                 <CartIcon className="h-4 w-4" />
                 {addedFeedback ? 'Added ✓' : adding ? 'Adding…' : 'Add to cart'}
               </Button>
-              <Button variant="secondary">Save for later</Button>
+              <WishlistButton productId={product.id} productName={product.name} />
             </div>
           </div>
         </div>

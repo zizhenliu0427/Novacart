@@ -4,6 +4,7 @@ using Novacart.Api.Services;
 using Novacart.Api.Models.Entities;
 using Novacart.Api.Models.Dtos.Orders;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Novacart.Api.Tests;
 
@@ -17,7 +18,7 @@ public class AdminOrderServiceTests
     public async Task GetAllAsync_ReturnsAllOrders_WithCustomerEmail()
     {
         using var db = TestDbFactory.Create();
-        var svc = new AdminOrderService(db);
+        var svc = new AdminOrderService(db, new FakeEmailService(), NullLogger<AdminOrderService>.Instance);
 
         var userId = await TestDbFactory.SeedTestUserAsync(db, "shopper@example.com");
         db.Orders.Add(new Order
@@ -41,7 +42,7 @@ public class AdminOrderServiceTests
     public async Task GetAllAsync_FiltersByStatus_AndSearchesOrderNumber()
     {
         using var db = TestDbFactory.Create();
-        var svc = new AdminOrderService(db);
+        var svc = new AdminOrderService(db, new FakeEmailService(), NullLogger<AdminOrderService>.Instance);
 
         var userId = await TestDbFactory.SeedTestUserAsync(db, "user@example.com");
         db.Orders.AddRange(
@@ -62,7 +63,7 @@ public class AdminOrderServiceTests
     public async Task GetByIdAsync_ReturnsOrderWithItems()
     {
         using var db = TestDbFactory.Create();
-        var svc = new AdminOrderService(db);
+        var svc = new AdminOrderService(db, new FakeEmailService(), NullLogger<AdminOrderService>.Instance);
 
         var userId = await TestDbFactory.SeedTestUserAsync(db, "detail@example.com");
         var product = await TestDbFactory.GetFirstProductAsync(db);
@@ -97,7 +98,7 @@ public class AdminOrderServiceTests
     public async Task GetByIdAsync_ThrowsNotFound_WhenOrderMissing()
     {
         using var db = TestDbFactory.Create();
-        var svc = new AdminOrderService(db);
+        var svc = new AdminOrderService(db, new FakeEmailService(), NullLogger<AdminOrderService>.Instance);
 
         var act = () => svc.GetByIdAsync(Guid.NewGuid());
 
@@ -108,7 +109,7 @@ public class AdminOrderServiceTests
     public async Task UpdateStatusAsync_AdvancesPendingToPaid_AndWritesHistory()
     {
         using var db = TestDbFactory.Create();
-        var svc = new AdminOrderService(db);
+        var svc = new AdminOrderService(db, new FakeEmailService(), NullLogger<AdminOrderService>.Instance);
         var adminId = Guid.NewGuid();
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
@@ -140,7 +141,7 @@ public class AdminOrderServiceTests
     public async Task UpdateStatusAsync_AllowsFullForwardChain_PendingToCompleted()
     {
         using var db = TestDbFactory.Create();
-        var svc = new AdminOrderService(db);
+        var svc = new AdminOrderService(db, new FakeEmailService(), NullLogger<AdminOrderService>.Instance);
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var order = new Order { UserId = userId, OrderNumber = "NC-CHAIN", CurrentStatus = OrderStatuses.Pending };
@@ -163,7 +164,7 @@ public class AdminOrderServiceTests
     public async Task UpdateStatusAsync_RejectsIllegalTransition()
     {
         using var db = TestDbFactory.Create();
-        var svc = new AdminOrderService(db);
+        var svc = new AdminOrderService(db, new FakeEmailService(), NullLogger<AdminOrderService>.Instance);
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var order = new Order { UserId = userId, OrderNumber = "NC-BAD", CurrentStatus = OrderStatuses.Pending };
@@ -181,7 +182,7 @@ public class AdminOrderServiceTests
     public async Task UpdateStatusAsync_RejectsUnknownStatus()
     {
         using var db = TestDbFactory.Create();
-        var svc = new AdminOrderService(db);
+        var svc = new AdminOrderService(db, new FakeEmailService(), NullLogger<AdminOrderService>.Instance);
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var order = new Order { UserId = userId, OrderNumber = "NC-UNKNOWN", CurrentStatus = OrderStatuses.Pending };
@@ -198,7 +199,7 @@ public class AdminOrderServiceTests
     public async Task UpdateStatusAsync_AllowsCancellationFromPending()
     {
         using var db = TestDbFactory.Create();
-        var svc = new AdminOrderService(db);
+        var svc = new AdminOrderService(db, new FakeEmailService(), NullLogger<AdminOrderService>.Instance);
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var order = new Order { UserId = userId, OrderNumber = "NC-CANCEL", CurrentStatus = OrderStatuses.Pending };
@@ -215,7 +216,7 @@ public class AdminOrderServiceTests
     public async Task UpdateStatusAsync_RejectsTransitionFromTerminalStatus()
     {
         using var db = TestDbFactory.Create();
-        var svc = new AdminOrderService(db);
+        var svc = new AdminOrderService(db, new FakeEmailService(), NullLogger<AdminOrderService>.Instance);
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var order = new Order { UserId = userId, OrderNumber = "NC-TERM", CurrentStatus = OrderStatuses.Completed };

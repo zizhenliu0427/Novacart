@@ -21,6 +21,15 @@ public class OrderDto
     public decimal Total { get; set; }
     public string Currency { get; set; } = "AUD";
     public string CurrentStatus { get; set; } = string.Empty;
+
+    public string ShippingName { get; set; } = string.Empty;
+    public string ShippingLine1 { get; set; } = string.Empty;
+    public string? ShippingLine2 { get; set; }
+    public string ShippingCity { get; set; } = string.Empty;
+    public string ShippingState { get; set; } = string.Empty;
+    public string ShippingPostcode { get; set; } = string.Empty;
+    public string ShippingCountry { get; set; } = "Australia";
+
     public DateTime CreatedAt { get; set; }
     public IReadOnlyList<OrderItemDto> Items { get; set; } = Array.Empty<OrderItemDto>();
 }

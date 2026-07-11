@@ -11,30 +11,20 @@ import { CartIcon, TrashIcon, PlusIcon, MinusIcon } from '@/components/icons';
 import { formatPrice } from '@/types/product';
 import { apiCall } from '@/lib/api';
 
+import { useRouter } from 'next/navigation';
+
 export default function CartPage() {
   const { user } = useAuth();
   const { cart, isLoading, updateItem, removeItem } = useCart();
+  const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null); // cartItemId being modified
-  const [isCheckingOut, setIsCheckingOut] = useState(false);
-  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
-  async function handleCheckout() {
-    if (!user) return;
-    setIsCheckingOut(true);
-    setCheckoutError(null);
-    try {
-      const res = await apiCall<{ redirectUrl: string }>('/checkout', {
-        method: 'POST',
-        body: {
-          successUrl: window.location.origin + '/checkout/success',
-          cancelUrl: window.location.origin + '/checkout/cancel',
-        },
-      });
-      window.location.href = res.redirectUrl;
-    } catch (err: any) {
-      setCheckoutError(err.message || 'Failed to initiate checkout. Please try again.');
-      setIsCheckingOut(false);
+  function handleCheckout() {
+    if (!user) {
+      router.push('/login?redirect=/checkout');
+      return;
     }
+    router.push('/checkout');
   }
 
   if (!user) {
@@ -209,18 +199,11 @@ export default function CartPage() {
               <span className="tnum">{formatPrice(cart?.subtotal ?? 0)}</span>
             </div>
 
-            {checkoutError && (
-              <p className="mt-3 text-xs text-danger text-center bg-red-50 dark:bg-red-950/20 p-2 rounded border border-red-100 dark:border-red-900/30">
-                {checkoutError}
-              </p>
-            )}
-
             <Button
               className="mt-4 w-full"
-              disabled={isCheckingOut}
               onClick={handleCheckout}
             >
-              {isCheckingOut ? 'Redirecting to payment...' : 'Proceed to checkout'}
+              Proceed to checkout
             </Button>
             <Link href="/products" className="mt-2 block">
               <Button variant="ghost" className="w-full text-sm">

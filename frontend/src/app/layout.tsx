@@ -15,6 +15,7 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'Novacart — Modern E-Commerce',
   description: 'A modern, mobile-first e-commerce platform.',
+  manifest: '/manifest.json',
 };
 
 // Theme-color follows the OS (light/dark).
@@ -44,6 +45,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </WishlistProvider>
           </CartProvider>
         </AuthProvider>
+        <script dangerouslySetInnerHTML={{ __html: `
+          if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+              navigator.serviceWorker.register('/sw.js').catch(function() {});
+            });
+          }
+        ` }} />
       </body>
     </html>
   );

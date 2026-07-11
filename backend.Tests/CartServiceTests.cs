@@ -222,4 +222,71 @@ public class CartServiceTests
         finalCart.Items.Should().BeEmpty();
         finalCart.TotalItems.Should().Be(0);
     }
+
+    [Fact]
+    public async Task GuestCartOperations_WorkCorrectly()
+    {
+        using var db = TestDbFactory.Create();
+        var svc = new CartService(db, new PricingService());
+        var sessionId = "guest_session_123";
+        var product = await TestDbFactory.GetFirstProductAsync(db);
+
+        // 1. Get empty guest cart
+        var cart = await svc.GetCartAsync(sessionId);
+        cart.Items.Should().BeEmpty();
+
+        // 2. Add item to guest cart
+        cart = await svc.AddItemAsync(sessionId, new AddCartItemRequest { ProductId = product.Id, Quantity = 3 });
+        cart.Items.Should().HaveCount(1);
+        cart.TotalItems.Should().Be(3);
+
+        // 3. Update item in guest cart
+        var cartItemId = cart.Items.First().Id;
+        cart = await svc.UpdateItemAsync(sessionId, cartItemId, new UpdateCartItemRequest { Quantity = 5 });
+        cart.Items.First().Quantity.Should().Be(5);
+
+        // 4. Remove item from guest cart
+        cart = await svc.RemoveItemAsync(sessionId, cartItemId);
+        cart.Items.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task MergeGuestCartAsync_MergesItems_AndWipesGuestCart()
+    {
+        using var db = TestDbFactory.Create();
+        var svc = new CartService(db, new PricingService());
+        var userId = await TestDbFactory.SeedTestUserAsync(db);
+        var sessionId = "guest_session_456";
+
+        var products = await db.Products.Take(2).ToListAsync();
+        var prodA = products[0];
+        var prodB = products[1];
+
+        // Add prodA to user's cart (Qty = 1)
+        await svc.AddItemAsync(userId, new AddCartItemRequest { ProductId = prodA.Id, Quantity = 1 });
+
+        // Add prodA (Qty = 2) and prodB (Qty = 4) to guest cart
+        await svc.AddItemAsync(sessionId, new AddCartItemRequest { ProductId = prodA.Id, Quantity = 2 });
+        await svc.AddItemAsync(sessionId, new AddCartItemRequest { ProductId = prodB.Id, Quantity = 4 });
+
+        // Merge!
+        await svc.MergeGuestCartAsync(sessionId, userId);
+
+        // Verify user's merged cart:
+        // prodA Qty = 1 + 2 = 3
+        // prodB Qty = 4
+        var userCart = await svc.GetCartAsync(userId);
+        userCart.Items.Should().HaveCount(2);
+        userCart.TotalItems.Should().Be(7);
+
+        var itemA = userCart.Items.First(i => i.ProductId == prodA.Id);
+        itemA.Quantity.Should().Be(3);
+
+        var itemB = userCart.Items.First(i => i.ProductId == prodB.Id);
+        itemB.Quantity.Should().Be(4);
+
+        // Verify guest cart is cleared/deleted
+        var guestCart = await db.Carts.FirstOrDefaultAsync(c => c.SessionId == sessionId);
+        guestCart.Should().BeNull("guest cart entity should be deleted from DB");
+    }
 }

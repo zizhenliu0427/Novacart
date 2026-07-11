@@ -55,6 +55,13 @@ public class OrderService : IOrderService
                 Total = o.Total,
                 Currency = o.Currency,
                 CurrentStatus = o.CurrentStatus,
+                ShippingName = o.ShippingName,
+                ShippingLine1 = o.ShippingLine1,
+                ShippingLine2 = o.ShippingLine2,
+                ShippingCity = o.ShippingCity,
+                ShippingState = o.ShippingState,
+                ShippingPostcode = o.ShippingPostcode,
+                ShippingCountry = o.ShippingCountry,
                 CreatedAt = o.CreatedAt
             })
             .ToListAsync();
@@ -99,6 +106,13 @@ public class OrderService : IOrderService
             Total = order.Total,
             Currency = order.Currency,
             CurrentStatus = order.CurrentStatus,
+            ShippingName = order.ShippingName,
+            ShippingLine1 = order.ShippingLine1,
+            ShippingLine2 = order.ShippingLine2,
+            ShippingCity = order.ShippingCity,
+            ShippingState = order.ShippingState,
+            ShippingPostcode = order.ShippingPostcode,
+            ShippingCountry = order.ShippingCountry,
             CreatedAt = order.CreatedAt,
             Items = order.Items.Select(oi => new OrderItemDto
             {

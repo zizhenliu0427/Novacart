@@ -113,6 +113,14 @@ public class AppDbContext : DbContext
             e.Property(o => o.ShippingCost).HasPrecision(18, 2);
             e.Property(o => o.Tax).HasPrecision(18, 2);
             e.Property(o => o.Total).HasPrecision(18,2);
+
+            e.Property(o => o.ShippingName).HasMaxLength(150).IsRequired();
+            e.Property(o => o.ShippingLine1).HasMaxLength(200).IsRequired();
+            e.Property(o => o.ShippingLine2).HasMaxLength(200);
+            e.Property(o => o.ShippingCity).HasMaxLength(100).IsRequired();
+            e.Property(o => o.ShippingState).HasMaxLength(100).IsRequired();
+            e.Property(o => o.ShippingPostcode).HasMaxLength(20).IsRequired();
+            e.Property(o => o.ShippingCountry).HasMaxLength(100).IsRequired();
             e.HasIndex(o => new { o.UserId, o.CurrentStatus, o.CreatedAt })
                 .HasDatabaseName("idx_orders_user_status");
             e.HasOne(o => o.User)

@@ -9,6 +9,9 @@ public class CheckoutRequest
 
     [Required]
     public string CancelUrl { get; set; } = string.Empty;
+
+    [Required]
+    public Guid AddressId { get; set; }
 }
 
 public class CheckoutResponseDto

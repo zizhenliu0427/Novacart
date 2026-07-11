@@ -7,6 +7,8 @@ using Novacart.Api.Models.Entities;
 using Novacart.Api.Models.Dtos.Payments;
 using Novacart.Api.Models.Dtos.Cart;
 using Microsoft.EntityFrameworkCore;
+using Novacart.Api.Data;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Novacart.Api.Tests;
 
@@ -53,7 +55,7 @@ public class PaymentServiceTests
     {
         using var db = TestDbFactory.Create();
         var cartSvc = new CartService(db, new PricingService());
-        var paymentSvc = new PaymentService(db, _strategies, new NullRedisCacheService(), _config);
+        var paymentSvc = new PaymentService(db, _strategies, new NullRedisCacheService(), _config, new FakeEmailService(), NullLogger<PaymentService>.Instance);
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
@@ -61,10 +63,13 @@ public class PaymentServiceTests
         // Add 2 headphones to cart
         await cartSvc.AddItemAsync(userId, new AddCartItemRequest { ProductId = product.Id, Quantity = 2 });
 
+        var addressId = await SeedAddressAsync(db, userId);
+
         var request = new CheckoutRequest
         {
             SuccessUrl = "http://success",
-            CancelUrl = "http://cancel"
+            CancelUrl = "http://cancel",
+            AddressId = addressId
         };
 
         var response = await paymentSvc.ProcessCheckoutAsync(userId, request, "stripe");
@@ -99,10 +104,11 @@ public class PaymentServiceTests
     public async Task ProcessCheckoutAsync_ThrowsAppException_WhenCartIsEmpty()
     {
         using var db = TestDbFactory.Create();
-        var paymentSvc = new PaymentService(db, _strategies, new NullRedisCacheService(), _config);
+        var paymentSvc = new PaymentService(db, _strategies, new NullRedisCacheService(), _config, new FakeEmailService(), NullLogger<PaymentService>.Instance);
         var userId = await TestDbFactory.SeedTestUserAsync(db);
 
-        var request = new CheckoutRequest { SuccessUrl = "http://s", CancelUrl = "http://c" };
+        var addressId = await SeedAddressAsync(db, userId);
+        var request = new CheckoutRequest { SuccessUrl = "http://s", CancelUrl = "http://c", AddressId = addressId };
 
         var act = () => paymentSvc.ProcessCheckoutAsync(userId, request, "stripe");
 
@@ -114,7 +120,7 @@ public class PaymentServiceTests
     {
         using var db = TestDbFactory.Create();
         var cartSvc = new CartService(db, new PricingService());
-        var paymentSvc = new PaymentService(db, _strategies, new NullRedisCacheService(), _config);
+        var paymentSvc = new PaymentService(db, _strategies, new NullRedisCacheService(), _config, new FakeEmailService(), NullLogger<PaymentService>.Instance);
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
@@ -124,8 +130,9 @@ public class PaymentServiceTests
         // 1. Setup Cart
         await cartSvc.AddItemAsync(userId, new AddCartItemRequest { ProductId = product.Id, Quantity = 3 });
 
+        var addressId = await SeedAddressAsync(db, userId);
         // 2. Perform Checkout (creates pending order and payment)
-        var checkout = await paymentSvc.ProcessCheckoutAsync(userId, new CheckoutRequest { SuccessUrl = "http://s", CancelUrl = "http://c" }, "stripe");
+        var checkout = await paymentSvc.ProcessCheckoutAsync(userId, new CheckoutRequest { SuccessUrl = "http://s", CancelUrl = "http://c", AddressId = addressId }, "stripe");
         var order = await db.Orders.FirstAsync(o => o.UserId == userId);
 
         // Verify stock is not decremented yet during checkout creation
@@ -161,7 +168,7 @@ public class PaymentServiceTests
     {
         using var db = TestDbFactory.Create();
         var cartSvc = new CartService(db, new PricingService());
-        var paymentSvc = new PaymentService(db, _strategies, new NullRedisCacheService(), _config);
+        var paymentSvc = new PaymentService(db, _strategies, new NullRedisCacheService(), _config, new FakeEmailService(), NullLogger<PaymentService>.Instance);
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
@@ -171,8 +178,9 @@ public class PaymentServiceTests
         // 1. Setup Cart with 4 items
         await cartSvc.AddItemAsync(userId, new AddCartItemRequest { ProductId = product.Id, Quantity = 4 });
 
+        var addressId = await SeedAddressAsync(db, userId);
         // 2. Perform Checkout
-        var checkout = await paymentSvc.ProcessCheckoutAsync(userId, new CheckoutRequest { SuccessUrl = "http://s", CancelUrl = "http://c" }, "stripe");
+        var checkout = await paymentSvc.ProcessCheckoutAsync(userId, new CheckoutRequest { SuccessUrl = "http://s", CancelUrl = "http://c", AddressId = addressId }, "stripe");
         var order = await db.Orders.FirstAsync(o => o.UserId == userId);
 
         // 3. Parallel purchase exhausts stock in the meantime (e.g. stock goes to 2)
@@ -199,5 +207,23 @@ public class PaymentServiceTests
 
         var cart = await db.Carts.Include(c => c.Items).FirstAsync(c => c.UserId == userId);
         cart.Items.Should().NotBeEmpty();
+    }
+
+    private static async Task<Guid> SeedAddressAsync(AppDbContext db, Guid userId)
+    {
+        var addr = new UserAddress
+        {
+            UserId = userId,
+            Label = "Home",
+            Line1 = "123 Main St",
+            City = "Sydney",
+            State = "NSW",
+            Postcode = "2000",
+            Country = "Australia",
+            IsDefaultShipping = true
+        };
+        db.UserAddresses.Add(addr);
+        await db.SaveChangesAsync();
+        return addr.Id;
     }
 }

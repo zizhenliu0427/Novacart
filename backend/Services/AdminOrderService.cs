@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Novacart.Api.Data;
 using Novacart.Api.Models.Dtos.Orders;
 using Novacart.Api.Models.Dtos.Products;
@@ -18,8 +19,18 @@ public interface IAdminOrderService
 public sealed class AdminOrderService : IAdminOrderService
 {
     private readonly AppDbContext _db;
+    private readonly IEmailService _emailService;
+    private readonly ILogger<AdminOrderService> _logger;
 
-    public AdminOrderService(AppDbContext db) => _db = db;
+    public AdminOrderService(
+        AppDbContext db,
+        IEmailService emailService,
+        ILogger<AdminOrderService> logger)
+    {
+        _db = db;
+        _emailService = emailService;
+        _logger = logger;
+    }
 
     public async Task<PagedResult<AdminOrderSummaryDto>> GetAllAsync(
         string? q, string? status, int page, int pageSize)
@@ -108,6 +119,20 @@ public sealed class AdminOrderService : IAdminOrderService
         });
 
         await _db.SaveChangesAsync();
+
+        // Send status update email notification to customer
+        try
+        {
+            if (order.User != null && !string.IsNullOrEmpty(order.User.Email))
+            {
+                await _emailService.SendOrderStatusUpdateAsync(order.User.Email, order, toStatus);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Failed to send order status update email for order {order.OrderNumber}.");
+        }
+
         return MapDetail(order);
     }
 
@@ -166,6 +191,13 @@ public sealed class AdminOrderService : IAdminOrderService
         CurrentStatus = o.CurrentStatus,
         CreatedAt = o.CreatedAt,
         UpdatedAt = o.UpdatedAt,
+        ShippingName = o.ShippingName,
+        ShippingLine1 = o.ShippingLine1,
+        ShippingLine2 = o.ShippingLine2,
+        ShippingCity = o.ShippingCity,
+        ShippingState = o.ShippingState,
+        ShippingPostcode = o.ShippingPostcode,
+        ShippingCountry = o.ShippingCountry,
         Items = o.Items.Select(oi => new OrderItemDto
         {
             Id = oi.Id,

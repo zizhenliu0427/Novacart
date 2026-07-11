@@ -16,6 +16,8 @@
     <PackageReference Include="StackExchange.Redis" Version="2.7.10" />
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
     <PackageReference Include="Stripe.net" Version="43.15.0" />
+    <PackageReference Include="Square" Version="35.0.0" />
+    <PackageReference Include="MailKit" Version="4.3.0" />
   </ItemGroup>
 
 </Project>

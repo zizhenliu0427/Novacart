@@ -6,10 +6,11 @@ import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { CartIcon } from '@/components/icons';
+import { CartIcon, HeartIcon, HeartFilledIcon } from '@/components/icons';
 import { formatPrice, type Product } from '@/types/product';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/contexts/CartContext';
+import { useWishlist } from '@/contexts/WishlistContext';
 
 /**
  * Category-agnostic product card — no vertical-specific ornament, works for any
@@ -18,6 +19,7 @@ import { useCart } from '@/contexts/CartContext';
 export function ProductCard({ product }: { product: Product }) {
   const { user } = useAuth();
   const { addItem } = useCart();
+  const { isWishlisted, toggle } = useWishlist();
   const router = useRouter();
   const [adding, setAdding] = useState(false);
 
@@ -25,6 +27,7 @@ export function ProductCard({ product }: { product: Product }) {
     typeof product.compareAtPrice === 'number' && product.compareAtPrice > product.price;
 
   const outOfStock = product.stockQuantity === 0;
+  const wishlisted = isWishlisted(product.id);
 
   async function handleAddToCart(e: React.MouseEvent) {
     e.preventDefault(); // don't follow Link
@@ -40,6 +43,15 @@ export function ProductCard({ product }: { product: Product }) {
     } finally {
       setAdding(false);
     }
+  }
+
+  async function handleToggleWishlist(e: React.MouseEvent) {
+    e.preventDefault(); // don't follow Link
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+    await toggle(product.id);
   }
 
   return (
@@ -59,6 +71,22 @@ export function ProductCard({ product }: { product: Product }) {
               <Badge tone="danger">Out of stock</Badge>
             </span>
           )}
+          {/* Wishlist heart toggle */}
+          <button
+            onClick={handleToggleWishlist}
+            aria-label={wishlisted ? `Remove ${product.name} from wishlist` : `Add ${product.name} to wishlist`}
+            className={`absolute bottom-3 right-3 rounded-full p-1.5 transition ${
+              wishlisted
+                ? 'bg-danger/10 text-danger hover:bg-danger/20'
+                : 'bg-surface/80 text-ink-muted hover:bg-surface hover:text-danger'
+            }`}
+          >
+            {wishlisted ? (
+              <HeartFilledIcon className="h-[18px] w-[18px]" />
+            ) : (
+              <HeartIcon className="h-[18px] w-[18px]" />
+            )}
+          </button>
         </div>
 
         <div className="flex flex-1 flex-col gap-2 p-4">

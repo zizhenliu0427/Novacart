@@ -49,6 +49,10 @@ builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IWishlistService, WishlistService>();
 builder.Services.AddScoped<IPricingService, PricingService>();
 builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
+builder.Services.AddScoped<IAddressService, AddressService>();
+builder.Services.AddScoped<ISquareCatalogueGateway, SquareCatalogueGateway>();
+builder.Services.AddScoped<ISquareCatalogueService, SquareCatalogueService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
 
 // JWT authentication
 JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear(); // keep "sub"/"email" claim names intact
@@ -138,7 +142,14 @@ if (app.Environment.IsDevelopment())
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();
+    if (db.Database.IsRelational())
+    {
+        db.Database.Migrate();
+    }
+    else
+    {
+        db.Database.EnsureCreated();
+    }
 
     // Dev-only admin bootstrap: ensures an admin account exists for exercising /api/admin/*.
     // Credentials come from configuration (see appsettings or env). NEVER enabled in production.
@@ -198,3 +209,5 @@ app.MapGet("/api/health", () => Results.Ok(new
 }));
 
 app.Run();
+
+public partial class Program { }

@@ -19,7 +19,7 @@ public class ProductServiceTests
         using var db = TestDbFactory.Create();
         var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
 
-        var result = await svc.GetAllAsync(null, null, null, page: 1, pageSize: 50);
+        var result = await svc.GetAllAsync(null, null, null, null, null, null, null, page: 1, pageSize: 50);
 
         result.Items.Should().HaveCount(12, "there are 12 seeded active products");
         result.TotalCount.Should().Be(12);
@@ -32,9 +32,9 @@ public class ProductServiceTests
         using var db = TestDbFactory.Create();
         var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
 
-        var page1 = await svc.GetAllAsync(null, null, null, page: 1, pageSize: 5);
-        var page2 = await svc.GetAllAsync(null, null, null, page: 2, pageSize: 5);
-        var page3 = await svc.GetAllAsync(null, null, null, page: 3, pageSize: 5);
+        var page1 = await svc.GetAllAsync(null, null, null, null, null, null, null, page: 1, pageSize: 5);
+        var page2 = await svc.GetAllAsync(null, null, null, null, null, null, null, page: 2, pageSize: 5);
+        var page3 = await svc.GetAllAsync(null, null, null, null, null, null, null, page: 3, pageSize: 5);
 
         page1.Items.Should().HaveCount(5);
         page2.Items.Should().HaveCount(5);
@@ -51,7 +51,7 @@ public class ProductServiceTests
         var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
 
         // Category 1 = Electronics (3 products seeded)
-        var result = await svc.GetAllAsync(null, categoryId: 1, null, page: 1, pageSize: 50);
+        var result = await svc.GetAllAsync(null, categoryId: 1, null, null, null, null, null, page: 1, pageSize: 50);
 
         result.Items.Should().HaveCount(3);
         result.Items.Should().OnlyContain(p => p.CategoryId == 1);
@@ -63,7 +63,7 @@ public class ProductServiceTests
         using var db = TestDbFactory.Create();
         var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
 
-        var result = await svc.GetAllAsync(null, categoryId: 999, null, page: 1, pageSize: 50);
+        var result = await svc.GetAllAsync(null, categoryId: 999, null, null, null, null, null, page: 1, pageSize: 50);
 
         result.Items.Should().BeEmpty();
         result.TotalCount.Should().Be(0);
@@ -77,7 +77,7 @@ public class ProductServiceTests
         using var db = TestDbFactory.Create();
         var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
 
-        var result = await svc.GetAllAsync(null, null, "price_asc", page: 1, pageSize: 50);
+        var result = await svc.GetAllAsync(null, null, null, "price_asc", null, null, null, page: 1, pageSize: 50);
 
         result.Items.Should().BeInAscendingOrder(p => p.Price);
     }
@@ -88,7 +88,7 @@ public class ProductServiceTests
         using var db = TestDbFactory.Create();
         var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
 
-        var result = await svc.GetAllAsync(null, null, "price_desc", page: 1, pageSize: 50);
+        var result = await svc.GetAllAsync(null, null, null, "price_desc", null, null, null, page: 1, pageSize: 50);
 
         result.Items.Should().BeInDescendingOrder(p => p.Price);
     }
@@ -99,7 +99,7 @@ public class ProductServiceTests
         using var db = TestDbFactory.Create();
         var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
 
-        var result = await svc.GetAllAsync(null, null, "name_asc", page: 1, pageSize: 50);
+        var result = await svc.GetAllAsync(null, null, null, "name_asc", null, null, null, page: 1, pageSize: 50);
 
         result.Items.Should().BeInAscendingOrder(p => p.Name);
     }
@@ -195,8 +195,53 @@ public class ProductServiceTests
         using var db = TestDbFactory.Create();
         var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
 
-        var result = await svc.GetAllAsync(null, categoryId: 1, null, page: 1, pageSize: 1);
+        var result = await svc.GetAllAsync(null, categoryId: 1, null, null, null, null, null, page: 1, pageSize: 1);
 
         result.Items.First().CategoryName.Should().Be("Electronics");
+    }
+
+    // ── Advanced Search ──────────────────────────────────────
+
+    [Fact]
+    public async Task GetAllAsync_FiltersByPriceRange()
+    {
+        using var db = TestDbFactory.Create();
+        var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
+
+        // Test min price
+        var minResult = await svc.GetAllAsync(null, null, null, null, minPrice: 500m, null, null, page: 1, pageSize: 50);
+        minResult.Items.Should().OnlyContain(p => p.Price >= 500m);
+
+        // Test max price
+        var maxResult = await svc.GetAllAsync(null, null, null, null, null, maxPrice: 50m, null, page: 1, pageSize: 50);
+        maxResult.Items.Should().OnlyContain(p => p.Price <= 50m);
+
+        // Test price range (e.g., $10 to $200)
+        var rangeResult = await svc.GetAllAsync(null, null, null, null, minPrice: 10m, maxPrice: 200m, null, page: 1, pageSize: 50);
+        rangeResult.Items.Should().OnlyContain(p => p.Price >= 10m && p.Price <= 200m);
+    }
+
+    [Fact]
+    public async Task GetAllAsync_FiltersByTag()
+    {
+        using var db = TestDbFactory.Create();
+        var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
+
+        // Seeded products include tags like "bestseller", "tech", "clothing", etc.
+        var result = await svc.GetAllAsync(null, null, null, null, null, null, tag: "bestseller", page: 1, pageSize: 50);
+        result.Items.Should().NotBeEmpty();
+        result.Items.Should().OnlyContain(p => p.Tags.Contains("bestseller"));
+    }
+
+    [Fact]
+    public async Task GetAllAsync_FiltersByMultipleCategories()
+    {
+        using var db = TestDbFactory.Create();
+        var svc = new ProductService(db, new PricingService(), new NullRedisCacheService());
+
+        // Category 1 (Electronics) and 2 (Books)
+        var result = await svc.GetAllAsync(null, null, new[] { 1, 2 }, null, null, null, null, page: 1, pageSize: 50);
+        result.Items.Should().NotBeEmpty();
+        result.Items.Should().OnlyContain(p => p.CategoryId == 1 || p.CategoryId == 2);
     }
 }

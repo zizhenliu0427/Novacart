@@ -28,6 +28,13 @@ public class AdminAnalyticsController : ControllerBase
 
     /// <summary>Best-selling products by units sold.</summary>
     [HttpGet("best-sellers")]
+    [ProducesResponseType(typeof(IReadOnlyList<BestSellerDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> BestSellers([FromQuery] int top = 10)
         => Ok(await _analytics.GetBestSellersAsync(top));
+
+    /// <summary>Low stock products.</summary>
+    [HttpGet("low-stock")]
+    [ProducesResponseType(typeof(IReadOnlyList<LowStockProductDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> LowStock([FromQuery] int threshold = 10)
+        => Ok(await _analytics.GetLowStockProductsAsync(threshold));
 }

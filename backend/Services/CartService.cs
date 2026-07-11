@@ -7,11 +7,22 @@ namespace Novacart.Api.Services;
 
 public interface ICartService
 {
+    // Authenticated path
     Task<CartDto> GetCartAsync(Guid userId);
     Task<CartDto> AddItemAsync(Guid userId, AddCartItemRequest request);
     Task<CartDto> UpdateItemAsync(Guid userId, Guid cartItemId, UpdateCartItemRequest request);
     Task<CartDto> RemoveItemAsync(Guid userId, Guid cartItemId);
     Task ClearCartAsync(Guid userId);
+
+    // Guest path
+    Task<CartDto> GetCartAsync(string sessionId);
+    Task<CartDto> AddItemAsync(string sessionId, AddCartItemRequest request);
+    Task<CartDto> UpdateItemAsync(string sessionId, Guid cartItemId, UpdateCartItemRequest request);
+    Task<CartDto> RemoveItemAsync(string sessionId, Guid cartItemId);
+    Task ClearCartAsync(string sessionId);
+
+    // Merge logic
+    Task MergeGuestCartAsync(string sessionId, Guid userId);
 }
 
 public class CartService : ICartService
@@ -27,31 +38,41 @@ public class CartService : ICartService
 
     // ── Internal helpers ──────────────────────────────────────
 
-    /// <summary>
-    /// Load the user's cart with items + products, or create one if it doesn't exist.
-    /// </summary>
-    private async Task<Cart> GetOrCreateCartAsync(Guid userId)
+    private async Task<Cart> GetOrCreateCartAsync(Guid? userId, string? sessionId)
     {
-        var cart = await _db.Carts
-            .Include(c => c.Items).ThenInclude(ci => ci.Product)
-            .FirstOrDefaultAsync(c => c.UserId == userId);
+        if (userId == null && string.IsNullOrEmpty(sessionId))
+            throw new ArgumentException("Either userId or sessionId must be provided.");
+
+        Cart? cart = null;
+        if (userId.HasValue)
+        {
+            cart = await _db.Carts
+                .Include(c => c.Items).ThenInclude(ci => ci.Product)
+                .FirstOrDefaultAsync(c => c.UserId == userId.Value);
+        }
+        else
+        {
+            cart = await _db.Carts
+                .Include(c => c.Items).ThenInclude(ci => ci.Product)
+                .FirstOrDefaultAsync(c => c.SessionId == sessionId);
+        }
 
         if (cart is not null) return cart;
 
-        // No cart exists — create and persist, then re-fetch with includes.
-        var newCart = new Cart { UserId = userId };
+        // No cart exists — create and persist, then re-fetch
+        var newCart = new Cart
+        {
+            UserId = userId,
+            SessionId = sessionId
+        };
         _db.Carts.Add(newCart);
         await _db.SaveChangesAsync();
 
-        // Re-fetch so the entity is clean and has the correct tracking state.
-        return (await _db.Carts
+        return await _db.Carts
             .Include(c => c.Items).ThenInclude(ci => ci.Product)
-            .FirstAsync(c => c.Id == newCart.Id));
+            .FirstAsync(c => c.Id == newCart.Id);
     }
 
-    /// <summary>
-    /// Re-fetch the cart with full includes so MapToDto can read Product navigations.
-    /// </summary>
     private async Task<Cart> ReloadCartAsync(Guid cartId)
     {
         return await _db.Carts
@@ -60,10 +81,6 @@ public class CartService : ICartService
             .FirstAsync(c => c.Id == cartId);
     }
 
-    /// <summary>
-    /// Load active pricing rules applicable to the cart's products, then map to DTO.
-    /// Called after items are materialised (Product navigation loaded).
-    /// </summary>
     private CartDto MapToDto(Cart cart, IReadOnlyCollection<PriceRule> rules)
     {
         var lineDtos = cart.Items.Select(ci =>
@@ -92,11 +109,6 @@ public class CartService : ICartService
         };
     }
 
-    /// <summary>Map using base prices only (no rules) — legacy/static fallback.</summary>
-    private CartDto MapToDtoBase(Cart cart) =>
-        MapToDto(cart, Array.Empty<PriceRule>());
-
-    /// <summary>Load the pricing rules applicable to a cart's product set.</summary>
     private async Task<IReadOnlyCollection<PriceRule>> LoadActiveRulesAsync(Cart cart)
     {
         var productIds = cart.Items.Select(ci => ci.ProductId).Distinct().ToList();
@@ -118,16 +130,9 @@ public class CartService : ICartService
             .ToListAsync();
     }
 
-    // ── Public methods ────────────────────────────────────────
+    // ── Unified internal core CRUD ─────────────────────────────
 
-    public async Task<CartDto> GetCartAsync(Guid userId)
-    {
-        var cart = await GetOrCreateCartAsync(userId);
-        var rules = await LoadActiveRulesAsync(cart);
-        return MapToDto(cart, rules);
-    }
-
-    public async Task<CartDto> AddItemAsync(Guid userId, AddCartItemRequest request)
+    private async Task<CartDto> CoreAddItemAsync(Guid? userId, string? sessionId, AddCartItemRequest request)
     {
         var product = await _db.Products.FindAsync(request.ProductId)
             ?? throw AppException.NotFound("Product");
@@ -138,7 +143,7 @@ public class CartService : ICartService
         if (product.StockQuantity < request.Quantity)
             throw new AppException($"Only {product.StockQuantity} unit(s) available.", StatusCodes.Status422UnprocessableEntity);
 
-        var cart = await GetOrCreateCartAsync(userId);
+        var cart = await GetOrCreateCartAsync(userId, sessionId);
 
         var existing = cart.Items.FirstOrDefault(ci => ci.ProductId == request.ProductId);
         if (existing is not null)
@@ -161,15 +166,14 @@ public class CartService : ICartService
         cart.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
-        // Re-fetch cart with products loaded for DTO mapping.
         var reloaded = await ReloadCartAsync(cart.Id);
         var rules = await LoadActiveRulesAsync(reloaded);
         return MapToDto(reloaded, rules);
     }
 
-    public async Task<CartDto> UpdateItemAsync(Guid userId, Guid cartItemId, UpdateCartItemRequest request)
+    private async Task<CartDto> CoreUpdateItemAsync(Guid? userId, string? sessionId, Guid cartItemId, UpdateCartItemRequest request)
     {
-        var cart = await GetOrCreateCartAsync(userId);
+        var cart = await GetOrCreateCartAsync(userId, sessionId);
 
         var item = cart.Items.FirstOrDefault(ci => ci.Id == cartItemId)
             ?? throw AppException.NotFound("Cart item");
@@ -192,9 +196,9 @@ public class CartService : ICartService
         return MapToDto(cart, rules);
     }
 
-    public async Task<CartDto> RemoveItemAsync(Guid userId, Guid cartItemId)
+    private async Task<CartDto> CoreRemoveItemAsync(Guid? userId, string? sessionId, Guid cartItemId)
     {
-        var cart = await GetOrCreateCartAsync(userId);
+        var cart = await GetOrCreateCartAsync(userId, sessionId);
 
         var item = cart.Items.FirstOrDefault(ci => ci.Id == cartItemId)
             ?? throw AppException.NotFound("Cart item");
@@ -207,17 +211,114 @@ public class CartService : ICartService
         return MapToDto(cart, rules);
     }
 
-    public async Task ClearCartAsync(Guid userId)
+    private async Task CoreClearCartAsync(Guid? userId, string? sessionId)
     {
-        var cart = await _db.Carts
-            .Include(c => c.Items)
-            .FirstOrDefaultAsync(c => c.UserId == userId);
+        Cart? cart = null;
+        if (userId.HasValue)
+        {
+            cart = await _db.Carts
+                .Include(c => c.Items)
+                .FirstOrDefaultAsync(c => c.UserId == userId.Value);
+        }
+        else
+        {
+            cart = await _db.Carts
+                .Include(c => c.Items)
+                .FirstOrDefaultAsync(c => c.SessionId == sessionId);
+        }
 
         if (cart is null) return;
 
         _db.CartItems.RemoveRange(cart.Items);
         cart.Items.Clear();
         cart.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+    }
+
+    // ── Public Auth Methods ─────────────────────────────────────
+
+    public async Task<CartDto> GetCartAsync(Guid userId)
+    {
+        var cart = await GetOrCreateCartAsync(userId, null);
+        var rules = await LoadActiveRulesAsync(cart);
+        return MapToDto(cart, rules);
+    }
+
+    public Task<CartDto> AddItemAsync(Guid userId, AddCartItemRequest request) =>
+        CoreAddItemAsync(userId, null, request);
+
+    public Task<CartDto> UpdateItemAsync(Guid userId, Guid cartItemId, UpdateCartItemRequest request) =>
+        CoreUpdateItemAsync(userId, null, cartItemId, request);
+
+    public Task<CartDto> RemoveItemAsync(Guid userId, Guid cartItemId) =>
+        CoreRemoveItemAsync(userId, null, cartItemId);
+
+    public Task ClearCartAsync(Guid userId) =>
+        CoreClearCartAsync(userId, null);
+
+    // ── Public Guest Methods ─────────────────────────────────────
+
+    public async Task<CartDto> GetCartAsync(string sessionId)
+    {
+        var cart = await GetOrCreateCartAsync(null, sessionId);
+        var rules = await LoadActiveRulesAsync(cart);
+        return MapToDto(cart, rules);
+    }
+
+    public Task<CartDto> AddItemAsync(string sessionId, AddCartItemRequest request) =>
+        CoreAddItemAsync(null, sessionId, request);
+
+    public Task<CartDto> UpdateItemAsync(string sessionId, Guid cartItemId, UpdateCartItemRequest request) =>
+        CoreUpdateItemAsync(null, sessionId, cartItemId, request);
+
+    public Task<CartDto> RemoveItemAsync(string sessionId, Guid cartItemId) =>
+        CoreRemoveItemAsync(null, sessionId, cartItemId);
+
+    public Task ClearCartAsync(string sessionId) =>
+        CoreClearCartAsync(null, sessionId);
+
+    // ── Merge guest cart ──────────────────────────────────────────
+
+    public async Task MergeGuestCartAsync(string sessionId, Guid userId)
+    {
+        if (string.IsNullOrEmpty(sessionId)) return;
+
+        _db.ChangeTracker.Clear();
+
+        var guestCart = await _db.Carts
+            .Include(c => c.Items).ThenInclude(ci => ci.Product)
+            .FirstOrDefaultAsync(c => c.SessionId == sessionId);
+
+        if (guestCart is null || !guestCart.Items.Any()) return;
+
+        var userCart = await GetOrCreateCartAsync(userId, null);
+
+        foreach (var guestItem in guestCart.Items)
+        {
+            var existing = userCart.Items.FirstOrDefault(ci => ci.ProductId == guestItem.ProductId);
+            if (existing is not null)
+            {
+                // Merge quantity and clamp to stock
+                var totalQty = existing.Quantity + guestItem.Quantity;
+                existing.Quantity = Math.Min(totalQty, guestItem.Product.StockQuantity);
+            }
+            else
+            {
+                // Transfer item to user's cart
+                var newItem = new CartItem
+                {
+                    CartId = userCart.Id,
+                    ProductId = guestItem.ProductId,
+                    Quantity = Math.Min(guestItem.Quantity, guestItem.Product.StockQuantity)
+                };
+                _db.CartItems.Add(newItem);
+            }
+        }
+
+        // Delete guest cart (cascade deletes items)
+        _db.Carts.Remove(guestCart);
+
+        userCart.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
     }
 }

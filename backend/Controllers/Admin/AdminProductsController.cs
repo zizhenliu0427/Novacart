@@ -13,8 +13,13 @@ namespace Novacart.Api.Controllers.Admin;
 public class AdminProductsController : ControllerBase
 {
     private readonly IAdminProductService _products;
+    private readonly ISquareCatalogueService _square;
 
-    public AdminProductsController(IAdminProductService products) => _products = products;
+    public AdminProductsController(IAdminProductService products, ISquareCatalogueService square)
+    {
+        _products = products;
+        _square = square;
+    }
 
     [HttpGet]
     [ProducesResponseType(typeof(PagedResult<AdminProductDto>), StatusCodes.Status200OK)]
@@ -58,5 +63,19 @@ public class AdminProductsController : ControllerBase
     {
         await _products.DeactivateAsync(id);
         return NoContent();
+    }
+
+    /// <summary>Sync products from Square Catalogue API (sandbox).</summary>
+    [HttpPost("sync-square")]
+    [ProducesResponseType(typeof(SquareSyncResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(SquareSyncResultDto), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SyncSquare()
+    {
+        var result = await _square.SyncProductsAsync();
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+        return Ok(result);
     }
 }

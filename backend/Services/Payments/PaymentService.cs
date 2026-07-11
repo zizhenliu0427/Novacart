@@ -17,17 +17,23 @@ public class PaymentService : IPaymentService
     private readonly AppDbContext _db;
     private readonly IEnumerable<IPaymentStrategy> _strategies;
     private readonly IRedisCacheService _cache;
+    private readonly IEmailService _email;
+    private readonly ILogger<PaymentService> _logger;
     private readonly string _stripeWebhookSecret;
 
     public PaymentService(
         AppDbContext db,
         IEnumerable<IPaymentStrategy> strategies,
         IRedisCacheService cache,
-        IConfiguration config)
+        IConfiguration config,
+        IEmailService email,
+        ILogger<PaymentService> logger)
     {
         _db = db;
         _strategies = strategies;
         _cache = cache;
+        _email = email;
+        _logger = logger;
         _stripeWebhookSecret = config["Stripe:WebhookSecret"] ?? string.Empty;
     }
 
@@ -67,6 +73,14 @@ public class PaymentService : IPaymentService
             Quantity = ci.Quantity
         }).ToList();
 
+        // Fetch selected shipping address & user info for snapshot
+        var address = await _db.UserAddresses
+            .FirstOrDefaultAsync(a => a.Id == request.AddressId && a.UserId == userId)
+            ?? throw AppException.NotFound("Shipping address");
+
+        var user = await _db.Users.FindAsync(userId) 
+            ?? throw AppException.NotFound("User");
+
         var order = new Order
         {
             UserId = userId,
@@ -77,6 +91,13 @@ public class PaymentService : IPaymentService
             Total = total,
             Currency = "AUD",
             CurrentStatus = OrderStatuses.Pending,
+            ShippingName = user.FullName,
+            ShippingLine1 = address.Line1,
+            ShippingLine2 = address.Line2,
+            ShippingCity = address.City,
+            ShippingState = address.State,
+            ShippingPostcode = address.Postcode,
+            ShippingCountry = address.Country,
             Items = orderItems
         };
 
@@ -184,6 +205,7 @@ public class PaymentService : IPaymentService
         try
         {
             var order = await _db.Orders
+                .Include(o => o.User)
                 .Include(o => o.Items).ThenInclude(oi => oi.Product)
                 .FirstOrDefaultAsync(o => o.Id == orderId);
 
@@ -243,6 +265,19 @@ public class PaymentService : IPaymentService
 
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();
+
+            // Send confirmation email
+            if (stockAvailable && order.User != null)
+            {
+                try
+                {
+                    await _email.SendOrderConfirmationAsync(order.User.Email, order);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to send order confirmation email.");
+                }
+            }
 
             // Invalidate caches so the user sees updated order list and product stock.
             await _cache.RemoveByPrefixAsync($"orders:user:{order.UserId}:");
