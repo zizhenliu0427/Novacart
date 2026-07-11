@@ -57,9 +57,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   );
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[180px_1fr]">
+    <div className="grid gap-8 md:grid-cols-[180px_1fr]">
       {/* Desktop sidebar — hidden on mobile */}
-      <aside className="hidden lg:block">
+      <aside className="hidden md:block">
         <h2 className="mb-3 px-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">
           Admin
         </h2>
@@ -67,7 +67,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </aside>
 
       {/* Mobile sidebar toggle */}
-      <div className="flex items-center gap-2 lg:hidden">
+      <div className="flex items-center gap-2 md:hidden">
         <button
           id="admin-sidebar-toggle"
           onClick={() => setSidebarOpen((o) => !o)}
@@ -82,7 +82,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       {/* Mobile sidebar panel (slide-down) */}
       {sidebarOpen && (
-        <div className="rounded-lg border border-border bg-surface p-3 lg:hidden">
+        <div className="rounded-lg border border-border bg-surface p-3 md:hidden">
           {navContent}
         </div>
       )}

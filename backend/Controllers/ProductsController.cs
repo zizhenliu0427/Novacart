@@ -25,6 +25,7 @@ public class ProductsController : ControllerBase
     /// <param name="page">1-based page number.</param>
     /// <param name="pageSize">Items per page (max 100).</param>
     [HttpGet]
+    [ResponseCache(Duration = 60, VaryByQueryKeys = new[] { "q", "categoryId", "categoryIds", "sort", "minPrice", "maxPrice", "tag", "page", "pageSize" })]
     [ProducesResponseType(typeof(PagedResult<ProductListItemDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAll(
         [FromQuery] string? q,
@@ -44,6 +45,7 @@ public class ProductsController : ControllerBase
 
     /// <summary>Get a single product's full detail (includes metadata for the attribute table).</summary>
     [HttpGet("{id:guid}")]
+    [ResponseCache(Duration = 120)]
     [ProducesResponseType(typeof(ProductDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id)

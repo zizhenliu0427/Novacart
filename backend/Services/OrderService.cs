@@ -2,7 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using Novacart.Api.Data;
 using Novacart.Api.Models.Entities;
 using Novacart.Api.Models.Dtos.Orders;
-using Novacart.Api.Models.Dtos.Products; // for PagedResult
+using Novacart.Api.Models.Dtos.Products;
+using Novacart.Api.Mappers; // for PagedResult
 
 namespace Novacart.Api.Services;
 
@@ -96,34 +97,7 @@ public class OrderService : IOrderService
             .FirstOrDefaultAsync(o => o.Id == orderId && o.UserId == userId)
             ?? throw AppException.NotFound("Order");
 
-        var dto = new OrderDto
-        {
-            Id = order.Id,
-            OrderNumber = order.OrderNumber,
-            Subtotal = order.Subtotal,
-            ShippingCost = order.ShippingCost,
-            Tax = order.Tax,
-            Total = order.Total,
-            Currency = order.Currency,
-            CurrentStatus = order.CurrentStatus,
-            ShippingName = order.ShippingName,
-            ShippingLine1 = order.ShippingLine1,
-            ShippingLine2 = order.ShippingLine2,
-            ShippingCity = order.ShippingCity,
-            ShippingState = order.ShippingState,
-            ShippingPostcode = order.ShippingPostcode,
-            ShippingCountry = order.ShippingCountry,
-            CreatedAt = order.CreatedAt,
-            Items = order.Items.Select(oi => new OrderItemDto
-            {
-                Id = oi.Id,
-                ProductId = oi.ProductId,
-                ProductName = oi.ProductNameSnapshot,
-                ProductSlug = oi.Product != null ? oi.Product.Slug : null,
-                Price = oi.PriceAtPurchase,
-                Quantity = oi.Quantity
-            }).ToList()
-        };
+        var dto = OrderMapper.ToDtoWithItems(order);
 
         await _cache.SetAsync(cacheKey, dto, CacheTtl);
         return dto;

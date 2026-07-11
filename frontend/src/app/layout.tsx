@@ -4,6 +4,7 @@ import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { CartProvider } from '@/contexts/CartContext';
 import { WishlistProvider } from '@/contexts/WishlistContext';
+import { ToastProvider } from '@/contexts/ToastContext';
 import { HeaderNav } from '@/components/HeaderNav';
 
 const inter = Inter({
@@ -33,6 +34,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AuthProvider>
           <CartProvider>
             <WishlistProvider>
+              <ToastProvider>
               <HeaderNav />
 
               <main className="mx-auto max-w-content px-4 py-8 sm:px-6">{children}</main>
@@ -42,6 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   © {new Date().getFullYear()} Novacart · A modern e-commerce demo.
                 </div>
               </footer>
+              </ToastProvider>
             </WishlistProvider>
           </CartProvider>
         </AuthProvider>

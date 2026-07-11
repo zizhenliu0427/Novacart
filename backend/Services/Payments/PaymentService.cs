@@ -3,6 +3,7 @@ using Stripe;
 using Novacart.Api.Data;
 using Novacart.Api.Models.Entities;
 using Novacart.Api.Models.Dtos.Payments;
+using Novacart.Api.Factories;
 
 namespace Novacart.Api.Services.Payments;
 
@@ -15,7 +16,8 @@ public interface IPaymentService
 public class PaymentService : IPaymentService
 {
     private readonly AppDbContext _db;
-    private readonly IEnumerable<IPaymentStrategy> _strategies;
+    private readonly IPaymentStrategyFactory _strategyFactory;
+    private readonly IOrderFactory _orderFactory;
     private readonly IRedisCacheService _cache;
     private readonly IEmailService _email;
     private readonly ILogger<PaymentService> _logger;
@@ -23,14 +25,16 @@ public class PaymentService : IPaymentService
 
     public PaymentService(
         AppDbContext db,
-        IEnumerable<IPaymentStrategy> strategies,
+        IPaymentStrategyFactory strategyFactory,
+        IOrderFactory orderFactory,
         IRedisCacheService cache,
         IConfiguration config,
         IEmailService email,
         ILogger<PaymentService> logger)
     {
         _db = db;
-        _strategies = strategies;
+        _strategyFactory = strategyFactory;
+        _orderFactory = orderFactory;
         _cache = cache;
         _email = email;
         _logger = logger;
@@ -57,23 +61,7 @@ public class PaymentService : IPaymentService
                 throw new AppException($"Product '{item.Product.Name}' has insufficient stock (Only {item.Product.StockQuantity} unit(s) available).", StatusCodes.Status422UnprocessableEntity);
         }
 
-        // 3. Create Order & OrderItems (snapshotted)
-        var subtotal = cart.Items.Sum(ci => ProductService.ResolvePrice(ci.Product) * ci.Quantity);
-        var shipping = subtotal >= 100.00m ? 0.00m : 10.00m; // free shipping over $100
-        var tax = Math.Round((subtotal + shipping) * 0.10m, 2); // 10% GST (inclusive for display, or exclusive. Let's make it exclusive)
-        var total = subtotal + shipping + tax;
-
-        var orderNumber = $"NC-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N").Substring(0, 6).ToUpperInvariant()}";
-
-        var orderItems = cart.Items.Select(ci => new OrderItem
-        {
-            ProductId = ci.ProductId,
-            ProductNameSnapshot = ci.Product.Name,
-            PriceAtPurchase = ProductService.ResolvePrice(ci.Product),
-            Quantity = ci.Quantity
-        }).ToList();
-
-        // Fetch selected shipping address & user info for snapshot
+        // 3. Create Order via OrderFactory (P3-3: Factory Pattern)
         var address = await _db.UserAddresses
             .FirstOrDefaultAsync(a => a.Id == request.AddressId && a.UserId == userId)
             ?? throw AppException.NotFound("Shipping address");
@@ -81,32 +69,13 @@ public class PaymentService : IPaymentService
         var user = await _db.Users.FindAsync(userId) 
             ?? throw AppException.NotFound("User");
 
-        var order = new Order
-        {
-            UserId = userId,
-            OrderNumber = orderNumber,
-            Subtotal = subtotal,
-            ShippingCost = shipping,
-            Tax = tax,
-            Total = total,
-            Currency = "AUD",
-            CurrentStatus = OrderStatuses.Pending,
-            ShippingName = user.FullName,
-            ShippingLine1 = address.Line1,
-            ShippingLine2 = address.Line2,
-            ShippingCity = address.City,
-            ShippingState = address.State,
-            ShippingPostcode = address.Postcode,
-            ShippingCountry = address.Country,
-            Items = orderItems
-        };
+        var order = _orderFactory.CreateFromCart(cart, user, address);
 
         _db.Orders.Add(order);
         await _db.SaveChangesAsync();
 
-        // 4. Resolve payment gateway strategy
-        var strategy = _strategies.FirstOrDefault(s => s.Code == gateway.ToLowerInvariant())
-            ?? throw new AppException($"Payment gateway '{gateway}' is not supported.", StatusCodes.Status400BadRequest);
+        // 4. Resolve payment gateway strategy via PaymentStrategyFactory (P3-3: Factory Pattern)
+        var strategy = _strategyFactory.Create(gateway);
 
         // 5. Generate Session URL
         var sessionResult = await strategy.CreateCheckoutSessionAsync(order, request.SuccessUrl, request.CancelUrl);

@@ -1,7 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Novacart.Api.Data;
-using Novacart.Api.Models.Dtos.Products;
 using Novacart.Api.Models.Entities;
+using Novacart.Api.Models.Dtos.Products;
+using Novacart.Api.Mappers;
 
 namespace Novacart.Api.Services;
 
@@ -103,19 +104,9 @@ public class ProductService : IProductService
 
         var activeRules = await LoadActiveRulesAsync(pageItems);
 
-        var items = pageItems.Select(p => new ProductListItemDto
-        {
-            Id            = p.Id,
-            Slug          = p.Slug,
-            Name          = p.Name,
-            Description   = p.Description,
-            Price         = _pricing.ResolveEffectivePrice(p, activeRules),
-            Currency      = p.Currency,
-            StockQuantity = p.StockQuantity,
-            CategoryId    = p.CategoryId,
-            CategoryName  = p.Category != null ? p.Category.Name : null,
-            Tags          = p.Tags,
-        }).ToList();
+        var items = pageItems.Select(p => ProductMapper.ToListItemDto(
+            p, _pricing.ResolveEffectivePrice(p, activeRules)
+        )).ToList();
 
         var result = new PagedResult<ProductListItemDto>
         {
@@ -138,20 +129,7 @@ public class ProductService : IProductService
 
         var activeRules = await LoadActiveRulesAsync(new[] { p });
 
-        return new ProductDetailDto
-        {
-            Id            = p.Id,
-            Slug          = p.Slug,
-            Name          = p.Name,
-            Description   = p.Description,
-            Price         = _pricing.ResolveEffectivePrice(p, activeRules),
-            Currency      = p.Currency,
-            StockQuantity = p.StockQuantity,
-            CategoryId    = p.CategoryId,
-            CategoryName  = p.Category?.Name,
-            Tags          = p.Tags,
-            Metadata      = p.Metadata,
-        };
+        return ProductMapper.ToDetailDto(p, _pricing.ResolveEffectivePrice(p, activeRules));
     }
 
     /// <inheritdoc/>

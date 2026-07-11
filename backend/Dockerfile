@@ -17,6 +17,6 @@ COPY --from=build /app/publish .
 EXPOSE 5000
 
 ENV ASPNETCORE_URLS=http://+:5000
-ENV ASPNETCORE_ENVIRONMENT=Development
+# ASPNETCORE_ENVIRONMENT is set by docker-compose or deployment config
 
 ENTRYPOINT ["dotnet", "Novacart.Api.dll"]

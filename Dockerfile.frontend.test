@@ -2,10 +2,10 @@
 FROM node:20-alpine
 WORKDIR /app
 
-# Install pinned dependencies from the lockfile (reproducible, fails fast
-# if package.json and package-lock.json drift apart).
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+# Install dependencies (use npm install to resolve manually added devDependencies)
+COPY frontend/package.json ./
+RUN npm install
+
 
 # Copy source and config
 COPY frontend/ ./

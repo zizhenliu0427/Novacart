@@ -1,7 +1,9 @@
+using System.IO.Compression;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -44,6 +46,10 @@ builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<IPaymentStrategy, StripePaymentStrategy>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 
+// P3-3: Factory pattern (README #13)
+builder.Services.AddScoped<Novacart.Api.Factories.IOrderFactory, Novacart.Api.Factories.OrderFactory>();
+builder.Services.AddScoped<Novacart.Api.Factories.IPaymentStrategyFactory, Novacart.Api.Factories.PaymentStrategyFactory>();
+
 // P2 scaffold services (stub bodies — see HANDOFF §7 / §13)
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IWishlistService, WishlistService>();
@@ -53,6 +59,19 @@ builder.Services.AddScoped<IAddressService, AddressService>();
 builder.Services.AddScoped<ISquareCatalogueGateway, SquareCatalogueGateway>();
 builder.Services.AddScoped<ISquareCatalogueService, SquareCatalogueService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+
+// Response compression (Brotli + Gzip)
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+});
+builder.Services.Configure<BrotliCompressionProviderOptions>(options => options.Level = CompressionLevel.Fastest);
+builder.Services.Configure<GzipCompressionProviderOptions>(options => options.Level = CompressionLevel.Fastest);
+
+// Required by [ResponseCache] attributes on controllers
+builder.Services.AddResponseCaching();
 
 // JWT authentication
 JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear(); // keep "sub"/"email" claim names intact
@@ -190,6 +209,10 @@ static async Task EnsureDevAdminAsync(AppDbContext db, IConfiguration config)
 // and hands them to GlobalExceptionHandler for a clean ProblemDetails response.
 app.UseExceptionHandler();
 
+app.UseResponseCompression();
+app.UseResponseCaching();
+
+
 app.UseSwagger();
 app.UseSwaggerUI();
 
@@ -200,13 +223,37 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// Health check endpoint
-app.MapGet("/api/health", () => Results.Ok(new
+// Health check endpoint — probes DB; Redis is a non-fatal warning (cache is optional).
+// IRedisCacheService is swapped for NullRedisCacheService in integration tests.
+app.MapGet("/api/health", async (AppDbContext db, IRedisCacheService cache) =>
 {
-    status = "healthy",
-    timestamp = DateTime.UtcNow,
-    environment = app.Environment.EnvironmentName
-}));
+    bool dbOk;
+    try { dbOk = await db.Database.CanConnectAsync(); }
+    catch { dbOk = false; }
+
+    bool redisOk;
+    try
+    {
+        // Ping via a tiny cache round-trip. NullRedisCacheService always succeeds (no-op).
+        await cache.SetAsync("__health__", "ok", TimeSpan.FromSeconds(5));
+        var ping = await cache.GetAsync<string>("__health__");
+        redisOk = ping is not null;
+    }
+    catch { redisOk = false; }
+
+    var status = dbOk ? (redisOk ? "healthy" : "degraded") : "unhealthy";
+    var result = new
+    {
+        status,
+        timestamp = DateTime.UtcNow,
+        environment = app.Environment.EnvironmentName,
+        database = dbOk,
+        redis = redisOk
+    };
+
+    // Only fail the health check if the database is unreachable.
+    return dbOk ? Results.Ok(result) : Results.Json(result, statusCode: 503);
+});
 
 app.Run();
 

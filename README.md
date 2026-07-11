@@ -1,5 +1,6 @@
 # Novacart — Modern E-Commerce Web Application
 
+[![CI](https://github.com/zizhenliu0427/Novacart/actions/workflows/ci.yml/badge.svg)](https://github.com/zizhenliu0427/Novacart/actions/workflows/ci.yml)
 > 中文版：[README_CN.md](README_CN.md)
 
 A modern e-commerce platform built with .NET backend and Next.js frontend. This project follows a **MonolithFirst** approach — a simple, functional MVP as the foundation, with scalability and advanced features planned for future iterations.

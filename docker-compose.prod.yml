@@ -1,0 +1,47 @@
+# Production override — no embedded DB/Redis (use external RDS/ElastiCache).
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  backend:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=${DB_CONNECTION_STRING}
+      - ConnectionStrings__Redis=${REDIS_CONNECTION_STRING}
+      - Jwt__Secret=${JWT_SECRET}
+      - Jwt__Issuer=${JWT_ISSUER:-novacart}
+      - Jwt__Audience=${JWT_AUDIENCE:-novacart}
+      - Stripe__SecretKey=${STRIPE_SECRET_KEY}
+      - Stripe__WebhookSecret=${STRIPE_WEBHOOK_SECRET}
+      - Square__AccessToken=${SQUARE_ACCESS_TOKEN}
+      - Square__Environment=${SQUARE_ENVIRONMENT:-sandbox}
+      - Smtp__Host=${SMTP_HOST}
+      - Smtp__Port=${SMTP_PORT:-587}
+      - Smtp__Username=${SMTP_USERNAME}
+      - Smtp__Password=${SMTP_PASSWORD}
+      - Smtp__FromAddress=${SMTP_FROM_ADDRESS:-noreply@novacart.com}
+      - Smtp__FromName=${SMTP_FROM_NAME:-Novacart}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    depends_on: []   # override dev deps on postgres/redis containers
+
+  frontend:
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Remove embedded postgres and redis for production —
+  # use managed services (RDS, ElastiCache) instead.
+  postgres:
+    profiles: ["dev-only"]
+  redis:
+    profiles: ["dev-only"]
