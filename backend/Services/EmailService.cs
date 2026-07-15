@@ -40,7 +40,8 @@ public class EmailService : IEmailService
         try
         {
             var message = new MimeMessage();
-            var fromEmail = _config["Smtp:FromEmail"] ?? "noreply@novacart.local";
+            // Read FromEmail, also accepting the FromAddress alias used by docker-compose.prod.yml.
+            var fromEmail = _config["Smtp:FromEmail"] ?? _config["Smtp:FromAddress"] ?? "noreply@novacart.local";
             var fromName = _config["Smtp:FromName"] ?? "Novacart Support";
             message.From.Add(new MailboxAddress(fromName, fromEmail));
             message.To.Add(new MailboxAddress(to, to));

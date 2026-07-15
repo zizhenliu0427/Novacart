@@ -18,7 +18,7 @@ public interface IJwtTokenService
 public class JwtTokenService : IJwtTokenService
 {
     private readonly string _secret;
-    private readonly int _expiryHours;
+    private readonly int _accessTokenMinutes;
     private readonly string _issuer;
     private readonly string _audience;
 
@@ -26,14 +26,18 @@ public class JwtTokenService : IJwtTokenService
     {
         _secret = config["Jwt:Secret"]
             ?? throw new InvalidOperationException("Jwt:Secret is not configured.");
-        _expiryHours = int.TryParse(config["Jwt:ExpiryHours"], out var h) ? h : 24;
+        // Access tokens are short-lived; refresh tokens (handled by RefreshTokenService) are long-lived.
+        // Falls back to ExpiryHours * 60 for backward compatibility.
+        _accessTokenMinutes = int.TryParse(config["Jwt:AccessTokenMinutes"], out var m)
+            ? m
+            : (int.TryParse(config["Jwt:ExpiryHours"], out var h) ? h * 60 : 24 * 60);
         _issuer = config["Jwt:Issuer"] ?? "novacart";
         _audience = config["Jwt:Audience"] ?? "novacart";
     }
 
     public (string Token, DateTime ExpiresAt) CreateToken(User user, IEnumerable<string> roles)
     {
-        var expiresAt = DateTime.UtcNow.AddHours(_expiryHours);
+        var expiresAt = DateTime.UtcNow.AddMinutes(_accessTokenMinutes);
 
         var claims = new List<Claim>
         {

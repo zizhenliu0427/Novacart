@@ -91,6 +91,36 @@ export default function AdminProductsPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setFormError(null);
+    try {
+      // 1. Get a presigned PUT URL from the backend (uses S3/LocalStack).
+      const presign = await apiCall<{ uploadUrl: string; publicUrl: string; objectKey: string }>(
+        '/admin/uploads/presign',
+        { method: 'POST', body: { fileName: file.name, contentType: file.type } },
+      );
+      // 2. Upload directly to S3 (bypasses the backend entirely).
+      const putRes = await fetch(presign.uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type },
+      });
+      if (!putRes.ok) throw new Error(`Upload failed (${putRes.status})`);
+      // 3. Store the resulting public URL in the form.
+      setForm((value) => ({ ...value, imageUrl: presign.publicUrl }));
+    } catch (err) {
+      setFormError(err instanceof Error ? `Image upload failed: ${err.message}` : 'Image upload failed.');
+    } finally {
+      setUploading(false);
+      // Reset so selecting the same file again re-triggers the handler.
+      event.target.value = '';
+    }
+  }
 
   async function triggerSquareSync() {
     if (!user) return;
@@ -455,8 +485,21 @@ export default function AdminProductsPage() {
                 type="url"
                 value={form.imageUrl}
                 onChange={(event) => setForm((value) => ({ ...value, imageUrl: event.target.value }))}
-                helperText="URL to product photo (e.g. Unsplash URL)"
+                helperText="URL to product photo, or upload a file below"
               />
+
+              <div className="space-y-1.5">
+                <label htmlFor="product-image-upload" className="block text-xs font-semibold uppercase tracking-wider text-ink-muted">Or upload an image</label>
+                <input
+                  id="product-image-upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  disabled={uploading}
+                  className="block w-full text-sm text-ink-muted file:mr-3 file:rounded-md file:border-0 file:bg-accent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-accent-contrast hover:file:bg-accent-hover disabled:opacity-40"
+                />
+                {uploading && <p className="text-xs text-ink-muted">Uploading…</p>}
+              </div>
 
               <div className="space-y-1.5">
                 <label htmlFor="product-metadata" className="block text-xs font-semibold uppercase tracking-wider text-ink-muted">Metadata JSON</label>

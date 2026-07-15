@@ -9,6 +9,7 @@ public interface IAuthService
 {
     Task<AuthResponse> RegisterAsync(RegisterRequest request);
     Task<AuthResponse> LoginAsync(LoginRequest request);
+    Task<AuthResponse> RefreshAsync(string refreshToken);
 }
 
 /// <summary>Thrown for expected auth failures (mapped to 4xx by the controller).</summary>
@@ -22,11 +23,13 @@ public class AuthService : IAuthService
 {
     private readonly AppDbContext _db;
     private readonly IJwtTokenService _jwt;
+    private readonly IRefreshTokenService _refreshTokens;
 
-    public AuthService(AppDbContext db, IJwtTokenService jwt)
+    public AuthService(AppDbContext db, IJwtTokenService jwt, IRefreshTokenService refreshTokens)
     {
         _db = db;
         _jwt = jwt;
+        _refreshTokens = refreshTokens;
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
@@ -49,7 +52,7 @@ public class AuthService : IAuthService
         _db.Users.Add(user);
         await _db.SaveChangesAsync();
 
-        return BuildResponse(user, new[] { RoleNames.Customer });
+        return await BuildResponseAsync(user, new[] { RoleNames.Customer });
     }
 
     public async Task<AuthResponse> LoginAsync(LoginRequest request)
@@ -68,16 +71,44 @@ public class AuthService : IAuthService
             throw new AuthException("This account has been deactivated.", StatusCodes.Status403Forbidden);
 
         var roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
-        return BuildResponse(user, roles);
+        return await BuildResponseAsync(user, roles);
     }
 
-    private AuthResponse BuildResponse(User user, IReadOnlyCollection<string> roles)
+    public async Task<AuthResponse> RefreshAsync(string refreshToken)
+    {
+        // Rotate: validates the old token, revokes it, issues a new pair.
+        var (newRefresh, refreshExpiresAt, userId, roles) = await _refreshTokens.RotateAsync(refreshToken);
+
+        var user = await _db.Users.FirstAsync(u => u.Id == userId);
+        var (accessToken, accessExpiresAt) = _jwt.CreateToken(user, roles);
+
+        return new AuthResponse
+        {
+            Token = accessToken,
+            ExpiresAt = accessExpiresAt,
+            RefreshToken = newRefresh,
+            RefreshExpiresAt = refreshExpiresAt,
+            User = new UserDto
+            {
+                Id = user.Id,
+                Email = user.Email,
+                FullName = user.FullName,
+                Roles = roles,
+            },
+        };
+    }
+
+    private async Task<AuthResponse> BuildResponseAsync(User user, IReadOnlyCollection<string> roles)
     {
         var (token, expiresAt) = _jwt.CreateToken(user, roles);
+        var (refreshToken, refreshExpiresAt) = await _refreshTokens.GenerateAsync(user.Id);
+
         return new AuthResponse
         {
             Token = token,
             ExpiresAt = expiresAt,
+            RefreshToken = refreshToken,
+            RefreshExpiresAt = refreshExpiresAt,
             User = new UserDto
             {
                 Id = user.Id,

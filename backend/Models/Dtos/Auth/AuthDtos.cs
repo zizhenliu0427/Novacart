@@ -35,5 +35,8 @@ public class AuthResponse
 {
     public string Token { get; set; } = string.Empty;
     public DateTime ExpiresAt { get; set; }
+    /// <summary>The refresh token (opaque). The client stores it in an HttpOnly cookie; this field is informational.</summary>
+    public string? RefreshToken { get; set; }
+    public DateTime? RefreshExpiresAt { get; set; }
     public UserDto User { get; set; } = new();
 }

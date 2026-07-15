@@ -20,6 +20,9 @@ public class AppException : Exception
     public static AppException Forbidden(string detail = "Access denied.") =>
         new(detail, StatusCodes.Status403Forbidden);
 
+    public static AppException Unauthorized(string detail = "Authentication required.") =>
+        new(detail, StatusCodes.Status401Unauthorized);
+
     /// <summary>Request is well-formed but semantically wrong (e.g. illegal state transition).</summary>
     public static AppException Unprocessable(string detail) =>
         new(detail, StatusCodes.Status422UnprocessableEntity);

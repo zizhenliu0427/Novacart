@@ -20,7 +20,7 @@ public class PaymentService : IPaymentService
     private readonly IOrderFactory _orderFactory;
     private readonly IPricingService _pricing;
     private readonly IRedisCacheService _cache;
-    private readonly IEmailService _email;
+    private readonly IEmailQueue _emailQueue;
     private readonly ILogger<PaymentService> _logger;
     private readonly string _stripeWebhookSecret;
 
@@ -31,7 +31,7 @@ public class PaymentService : IPaymentService
         IPricingService pricing,
         IRedisCacheService cache,
         IConfiguration config,
-        IEmailService email,
+        IEmailQueue emailQueue,
         ILogger<PaymentService> logger)
     {
         _db = db;
@@ -39,7 +39,7 @@ public class PaymentService : IPaymentService
         _orderFactory = orderFactory;
         _pricing = pricing;
         _cache = cache;
-        _email = email;
+        _emailQueue = emailQueue;
         _logger = logger;
         _stripeWebhookSecret = config["Stripe:WebhookSecret"] ?? string.Empty;
     }
@@ -254,16 +254,22 @@ public class PaymentService : IPaymentService
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();
 
-            // Send confirmation email
+            // Queue confirmation email (non-blocking — sent by the background worker)
             if (stockAvailable && order.User != null)
             {
                 try
                 {
-                    await _email.SendOrderConfirmationAsync(order.User.Email, order);
+                    await _emailQueue.EnqueueAsync(new EmailMessage
+                    {
+                        Kind = EmailKind.OrderConfirmation,
+                        Recipient = order.User.Email,
+                        OrderNumber = order.OrderNumber,
+                        OrderTotal = order.Total,
+                    });
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to send order confirmation email.");
+                    _logger.LogError(ex, "Failed to enqueue order confirmation email.");
                 }
             }
 

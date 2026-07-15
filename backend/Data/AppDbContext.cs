@@ -25,6 +25,7 @@ public class AppDbContext : DbContext
     public DbSet<WishlistItem> WishlistItems => Set<WishlistItem>();
     public DbSet<PriceRule> PriceRules => Set<PriceRule>();
     public DbSet<UserAddress> UserAddresses => Set<UserAddress>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -279,6 +280,20 @@ public class AppDbContext : DbContext
             e.HasOne(a => a.User)
                 .WithMany()
                 .HasForeignKey(a => a.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── RefreshToken (JWT refresh, rotation + reuse detection) ──
+        modelBuilder.Entity<RefreshToken>(e =>
+        {
+            e.ToTable("refresh_tokens");
+            e.Property(t => t.TokenHash).HasMaxLength(128).IsRequired();
+            e.HasIndex(t => t.TokenHash).IsUnique().HasDatabaseName("idx_refresh_tokens_token_hash");
+            e.HasIndex(t => t.UserId).HasDatabaseName("idx_refresh_tokens_user_id");
+            e.Property(t => t.ReplacedByTokenHash).HasMaxLength(128);
+            e.HasOne(t => t.User)
+                .WithMany()
+                .HasForeignKey(t => t.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

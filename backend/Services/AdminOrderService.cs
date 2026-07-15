@@ -19,16 +19,16 @@ public interface IAdminOrderService
 public sealed class AdminOrderService : IAdminOrderService
 {
     private readonly AppDbContext _db;
-    private readonly IEmailService _emailService;
+    private readonly IEmailQueue _emailQueue;
     private readonly ILogger<AdminOrderService> _logger;
 
     public AdminOrderService(
         AppDbContext db,
-        IEmailService emailService,
+        IEmailQueue emailQueue,
         ILogger<AdminOrderService> logger)
     {
         _db = db;
-        _emailService = emailService;
+        _emailQueue = emailQueue;
         _logger = logger;
     }
 
@@ -120,17 +120,24 @@ public sealed class AdminOrderService : IAdminOrderService
 
         await _db.SaveChangesAsync();
 
-        // Send status update email notification to customer
+        // Queue status update email (non-blocking — sent by the background worker)
         try
         {
             if (order.User != null && !string.IsNullOrEmpty(order.User.Email))
             {
-                await _emailService.SendOrderStatusUpdateAsync(order.User.Email, order, toStatus);
+                await _emailQueue.EnqueueAsync(new EmailMessage
+                {
+                    Kind = EmailKind.OrderStatusUpdate,
+                    Recipient = order.User.Email,
+                    OrderNumber = order.OrderNumber,
+                    OrderTotal = order.Total,
+                    NewStatus = toStatus,
+                });
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, $"Failed to send order status update email for order {order.OrderNumber}.");
+            _logger.LogError(ex, $"Failed to enqueue order status update email for order {order.OrderNumber}.");
         }
 
         return MapDetail(order);

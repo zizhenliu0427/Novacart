@@ -37,6 +37,7 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
 builder.Services.AddSingleton<IRedisCacheService, RedisCacheService>();
 builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
 builder.Services.AddScoped<IProductService, Novacart.Api.Services.ProductService>();
 builder.Services.AddScoped<IAdminProductService, AdminProductService>();
 builder.Services.AddScoped<IAdminOrderService, AdminOrderService>();
@@ -59,6 +60,14 @@ builder.Services.AddScoped<IAddressService, AddressService>();
 builder.Services.AddScoped<ISquareCatalogueGateway, SquareCatalogueGateway>();
 builder.Services.AddScoped<ISquareCatalogueService, SquareCatalogueService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+
+// Async email queue: producers enqueue, EmailBackgroundWorker drains and sends.
+builder.Services.AddSingleton<EmailQueue>();
+builder.Services.AddSingleton<IEmailQueue>(sp => sp.GetRequiredService<EmailQueue>());
+builder.Services.AddHostedService<EmailBackgroundWorker>();
+
+// S3 object storage (LocalStack in dev, real AWS in prod — config-driven).
+builder.Services.AddSingleton<Novacart.Api.Storage.IS3StorageService, Novacart.Api.Storage.S3StorageService>();
 
 // Response compression (Brotli + Gzip)
 builder.Services.AddResponseCompression(options =>
