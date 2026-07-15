@@ -19,17 +19,33 @@ public class FakeJwtTokenService : IJwtTokenService
 }
 
 /// <summary>
+/// Test double for IRefreshTokenService — returns fixed values without touching the DB,
+/// so AuthService tests stay focused on auth logic.
+/// </summary>
+public class FakeRefreshTokenService : IRefreshTokenService
+{
+    public Task<(string RawToken, DateTime ExpiresAt)> GenerateAsync(Guid userId) =>
+        Task.FromResult(("dummy-refresh-token", DateTime.UtcNow.AddDays(7)));
+
+    public Task<(string NewRawToken, DateTime ExpiresAt, Guid UserId, IEnumerable<string> Roles)> RotateAsync(string rawToken) =>
+        throw new NotImplementedException();
+
+    public Task RevokeAllAsync(Guid userId) => Task.CompletedTask;
+}
+
+/// <summary>
 /// Unit tests for AuthService — covers registration, login, deactivation check, duplicate email rejection.
 /// </summary>
 public class AuthServiceTests
 {
     private readonly FakeJwtTokenService _fakeJwt = new();
+    private readonly FakeRefreshTokenService _fakeRefresh = new();
 
     [Fact]
     public async Task RegisterAsync_CreatesUser_AndReturnsAuthResponse()
     {
         using var db = TestDbFactory.Create();
-        var svc = new AuthService(db, _fakeJwt);
+        var svc = new AuthService(db, _fakeJwt, _fakeRefresh);
 
         var request = new RegisterRequest
         {
@@ -62,7 +78,7 @@ public class AuthServiceTests
     public async Task RegisterAsync_ThrowsAuthException_WhenEmailAlreadyExists()
     {
         using var db = TestDbFactory.Create();
-        var svc = new AuthService(db, _fakeJwt);
+        var svc = new AuthService(db, _fakeJwt, _fakeRefresh);
         await TestDbFactory.SeedTestUserAsync(db, "existing@example.com");
 
         var request = new RegisterRequest
@@ -81,7 +97,7 @@ public class AuthServiceTests
     public async Task LoginAsync_ReturnsToken_WhenCredentialsAreValid()
     {
         using var db = TestDbFactory.Create();
-        var svc = new AuthService(db, _fakeJwt);
+        var svc = new AuthService(db, _fakeJwt, _fakeRefresh);
 
         // Seed user with a hashed password
         var user = new User
@@ -112,7 +128,7 @@ public class AuthServiceTests
     public async Task LoginAsync_ThrowsAuthException_WhenPasswordIsIncorrect()
     {
         using var db = TestDbFactory.Create();
-        var svc = new AuthService(db, _fakeJwt);
+        var svc = new AuthService(db, _fakeJwt, _fakeRefresh);
 
         var user = new User
         {
@@ -139,7 +155,7 @@ public class AuthServiceTests
     public async Task LoginAsync_ThrowsAuthException_WhenUserDoesNotExist()
     {
         using var db = TestDbFactory.Create();
-        var svc = new AuthService(db, _fakeJwt);
+        var svc = new AuthService(db, _fakeJwt, _fakeRefresh);
 
         var request = new LoginRequest
         {
@@ -156,7 +172,7 @@ public class AuthServiceTests
     public async Task LoginAsync_ThrowsAuthException_WhenUserIsInactive()
     {
         using var db = TestDbFactory.Create();
-        var svc = new AuthService(db, _fakeJwt);
+        var svc = new AuthService(db, _fakeJwt, _fakeRefresh);
 
         var user = new User
         {
