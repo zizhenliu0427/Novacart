@@ -5,9 +5,9 @@
 > project, the conventions to follow, the frontend design system to build against, and the
 > **Priority 2 (P2)** & **Priority 3 (P3)** feature-by-feature implementation checklist.
 >
-> **Status:** Priority 1 (MVP), Priority 2 (P2), and Priority 3 (P3) are **complete & verified**. See §8 and §10 for details.
+> **Status:** Priority 1 (MVP), Priority 2 (P2), and Priority 3 (P3) are **complete & verified**, plus the P14 "preferred" deliverables (refresh tokens, async email queue, S3/LocalStack storage) and all documentation deliverables. See §8 and §10 for details.
 >
-> Last updated: 2026-07-11 — P3 completed: automated CI/CD pipeline (GitHub Actions), test coverage expansion (Vitest + JSDOM + RTL), code quality patterns (OrderFactory, PaymentStrategyFactory, Product/Order Mappers, 9 performance indexes, database standards doc), frontend layout/architecture polish (DataTable, Modal, Pagination, Toast context, responsive layout), response compression, HTTP caching, deep health checks, and production Docker deployment setup (environment variables, production Compose, deployment guide). All 110 backend and 24 frontend tests pass.
+> Last updated: 2026-07-15 — P14 preferred + docs complete: JWT refresh tokens (rotation + reuse detection), async email queue (Channel + BackgroundService), S3 object storage with LocalStack (no AWS account needed), plus ARCHITECTURE/UI-DESIGN/USER-GUIDE/DEMO docs. Backend **130** tests, frontend **24** tests, all passing.
 
 
 ---
@@ -78,8 +78,8 @@
 | Frontend: shared `Input` component (label/error/helperText/3 sizes) wired into login/register/products | ✅ | [frontend/src/components/ui/Input.tsx](frontend/src/components/ui/Input.tsx) |
 | Frontend: cookie-based auth — `apiCall` uses `credentials: 'include'`; JWT in HttpOnly cookie, flag cookie for Edge middleware | ✅ | [frontend/src/lib/api.ts](frontend/src/lib/api.ts), [frontend/src/lib/auth.ts](frontend/src/lib/auth.ts) |
 | Frontend: shared `order.ts` types (de-duplicated from inline interfaces) | ✅ | [frontend/src/types/order.ts](frontend/src/types/order.ts) |
-| **Backend Unit Tests** (92 tests across auth, catalogue, cart, payments, admin products/orders, pricing, profile and wishlist) | ✅ 92/92 | [backend.Tests/](backend.Tests/) |
-| **Frontend Unit Tests** (12 tests using Vitest for helper formatting/parsing logic) | ✅ | [frontend/src/types/product.test.ts](frontend/src/types/product.test.ts) |
+| **Backend Unit Tests** (130 tests across auth, catalogue, cart, payments, admin products/orders, pricing, profile, wishlist, analytics, Square, refresh tokens, email queue, S3 storage, and WebApplicationFactory integration) | ✅ 130/130 | [backend.Tests/](backend.Tests/) |
+| **Frontend Unit Tests** (24 tests: pure-function helpers + RTL component tests for Button/DataTable) | ✅ 24/24 | [frontend/src/types/product.test.ts](frontend/src/types/product.test.ts), [frontend/src/components/ui/Button.test.tsx](frontend/src/components/ui/Button.test.tsx), [frontend/src/components/ui/DataTable.test.tsx](frontend/src/components/ui/DataTable.test.tsx) |
 | **Containerized Test Configurations** (`Dockerfile.backend.test`, `Dockerfile.frontend.test`, `vitest.config.ts`) | ✅ | Root & [frontend/vitest.config.ts](frontend/vitest.config.ts) |
 | Swagger with Bearer auth button | ✅ | `/swagger` |
 | Docker: full stack runs, no host tooling, no port clashes | ✅ | [docker-compose.yml](docker-compose.yml) + local `docker-compose.override.yml` |
@@ -111,13 +111,13 @@ docker compose down -v              # stop + wipe DB/redis volumes
 ### Running Unit Tests (Docker-only)
 Both backend and frontend test suites are fully containerized and can be built and run in Docker:
 
-**Backend Tests (92 cases currently defined and verified):**
+**Backend Tests (110 cases currently defined and verified):**
 ```bash
 docker build -f Dockerfile.backend.test -t novacart-backend-test .
 docker run --rm novacart-backend-test
 ```
 
-**Frontend Tests (12 cases for formatters, parsers, and metadata helpers):**
+**Frontend Tests (24 cases: pure-function helpers + RTL component tests for Button/DataTable):**
 ```bash
 docker build -f Dockerfile.frontend.test -t novacart-frontend-test .
 docker run --rm novacart-frontend-test
@@ -147,7 +147,7 @@ docker run --rm novacart-frontend-test
 - Unique indexes named `idx_<table>_<col>`. e.g. `idx_payment_webhooks_event_id`.
 - Postgres-native types where the ER calls for them: `text[]` (Product.Tags), `jsonb` (Product.Metadata, Payment.RawResponse, PaymentMethod.Config).
 
-**Price seam (established):** All price reads go through `ProductService.ResolvePrice(Product)` — a **static** method that returns `product.Price` in P1. P2 dynamic pricing replaces this body. Made static to avoid EF Core's "constant expression capture" error inside LINQ `.Select()`. The non-static `IProductService.GetEffectivePrice()` delegates to it for DI callers.
+**Price seam (established):** Price reads flow through `IPricingService.ResolveEffectivePrice` (P2 dynamic pricing engine — percent/flat/fixed rules, scope priority, time windows). `ProductService.ResolvePrice` is a legacy static pass-through kept for EF LINQ compatibility; the live path uses the rule engine.
 
 **Strategy Pattern for Payments (established):**
 Payment processing uses strategies. To register a new gateway, implement `IPaymentStrategy` (declares `Code` and `CreateCheckoutSessionAsync`) and add it to the DI container. `PaymentService` automatically selects the appropriate strategy based on the requested code.
@@ -167,7 +167,7 @@ The tone is deliberately **neutral, content-first, and adaptable**: a clean, tru
 All five MVP features are done. Recorded here for reference; the active work is P2 (§7).
 
 1. **User Registration & Login** — login/register pages, `useAuth` hook + `AuthContext` (JWT in HttpOnly cookie, `novacart_authed` flag cookie for Edge middleware), route guard. ✅
-2. **Product Browsing** — 12 seed products / 5 categories from PostgreSQL, server-side search + category filter + 4 sort modes, dynamic specs table from metadata jsonb, **Redis-cached product list** (60s TTL). Square Catalogue API integration planned for P2. ✅
+2. **Product Browsing** — 12 seed products / 5 categories from PostgreSQL, server-side search + category filter + 4 sort modes, dynamic specs table from metadata jsonb, **Redis-cached product list** (60s TTL). Square Catalogue API integration (P2-13). ✅
 3. **Shopping Cart** — `Cart`/`CartItem` entities, CartService CRUD with stock boundaries, `CartContext` + cart page. ✅
 4. **Checkout & Stripe Payment** — `PaymentMethod`/`Payment`/`PaymentWebhook` entities, Strategy-pattern provider, `ProcessCheckoutAsync` (pending order + Stripe session), `HandleWebhookAsync` (signature verify + idempotent unique index + transactional stock decrement + cart clear). Local webhook testing documented in `docs/STRIPE_WEBHOOK_LOCAL.md`. ✅
 5. **Order History** — `OrderService` with ownership checks, expandable cards with lazy-loaded receipts and frozen pricing, **Redis-cached order list/detail** (30s TTL with invalidation on new orders). ✅
@@ -194,7 +194,7 @@ The P14 spec ([P14_Modern_Ecommerce_Web_App.md](P14_Modern_Ecommerce_Web_App.md)
 | **Admin dashboard** (product/inventory/order CRUD) | **P2** | ✅ DONE | Product/inventory CRUD + order status state machine updates. |
 | **Analytics dashboard** | **P2** | ✅ DONE | ECharts (`echarts-for-react`) sales dashboard showing sales-over-time, best-sellers, and stock levels. |
 | **PWA** (service worker) | **P2** | ✅ DONE | manifest.webmanifest + icons, sw.js static caching with api exclusion, and /offline fallback page. |
-| Test coverage (components/contexts) | **P2** | ✅ DONE | 110 backend integration tests (passing under TestHost) + frontend component tests. |
+| Test coverage (components/contexts) | **P2** | ✅ DONE | 130 backend integration tests (passing under TestHost) + frontend component tests. |
 
 ---
 
@@ -313,20 +313,49 @@ Legend: 🟢 done · 🟡 partial · 🔴 not started.
 - [x] Wire trigger sync action on frontend Admin Products page.
 - [x] 3 `SquareCatalogueServiceTests` verifying categorization, upserts and update loops.
 
+### P2-14 — JWT Refresh Tokens (P14 preferred) — 🟢
+**Goal:** Short-lived access tokens + rotated refresh tokens with reuse detection.
+- [x] `RefreshToken` entity + `AddRefreshTokens` migration (`refresh_tokens` table, unique `idx_refresh_tokens_token_hash`).
+- [x] `RefreshTokenService`: generate (SHA-256 hashed, opaque), rotate (revoke old + issue new + link `ReplacedByTokenHash`), reuse detection (revoke entire family), revoke-all (logout).
+- [x] Access token 15 min (`Jwt:AccessTokenMinutes`); refresh 7 days (`Jwt:RefreshTokenDays`).
+- [x] Two cookies: `novacart_jwt` (access, `Path=/api`) + `novacart_refresh` (refresh, `Path=/api/auth` — narrower scope, sent only to auth endpoints).
+- [x] `POST /api/auth/refresh` endpoint; logout revokes all refresh tokens for the user.
+- [x] Frontend `apiCall` auto-refreshes on 401 (coalesced, single refresh across concurrent requests) and retries the original call; falls back to `/login` only if refresh fails.
+- [x] 5 `RefreshTokenServiceTests` (generate, rotate, reuse detection, unknown token, revoke-all) + `AuthServiceTests` updated for the new constructor.
+
+### P2-15 — Async Email Queue (P14 preferred) — 🟢
+**Goal:** Decouple email sending from request/webhook handling via a background queue.
+- [x] `EmailQueue` (Singleton, bounded `Channel<EmailMessage>` with `Wait` back-pressure) + `EmailBackgroundWorker` (`BackgroundService` draining the queue, resolves a scoped `EmailService` per message).
+- [x] `PaymentService` and `AdminOrderService` now enqueue (`IEmailQueue`) instead of calling `IEmailService` directly — webhook/request handlers return immediately.
+- [x] **Bug fixed:** `EmailService` now reads `Smtp:FromAddress` as an alias for `Smtp:FromEmail` (the prod compose used the wrong key — sender address was silently ignored).
+- [x] `IEmailService` interface unchanged → `FakeEmailService` retained; `FakeEmailQueue` added for tests asserting enqueue.
+- [x] 4 `EmailQueueTests` (FIFO order, capacity/no-block, fake records, snapshot fields).
+
+### P2-16 — S3 Object Storage (P14 preferred) — 🟢
+**Goal:** Admin uploads product images directly to S3; backend issues presigned URLs (never proxies file bodies).
+- [x] `IS3StorageService` + `S3StorageService` (config-driven: `Aws:S3:ServiceUrl` → LocalStack; unset → real AWS default credential chain).
+- [x] `POST /api/admin/uploads/presign` (RBAC-guarded) returns presigned PUT URL + public object URL.
+- [x] Frontend admin product form: file picker → presign → PUT to S3 → fills ImageUrl (manual URL entry retained as fallback).
+- [x] **No AWS account required**: `docker-compose.yml` runs `localstack/localstack` with an S3 service + auto-created `novacart-product-images` bucket; production = unset `ServiceUrl` + real credentials (zero code change).
+- [x] `AWSSDK.S3` package added; DI registered as Singleton.
+- [x] 4 `S3StorageServiceTests` (constructor builds without network, throws when bucket missing, presigned PUT URL + public URL correctness, public-URL uses configured base).
+
+### P2-17 — Documentation Deliverables (P14) — 🟢
+- [x] `docs/ARCHITECTURE.md` — layering, data flows, design patterns, caching, security.
+- [x] `docs/UI-DESIGN.md` — design tokens, component library, responsive strategy.
+- [x] `docs/USER-GUIDE.md` — customer / admin / sysadmin guides.
+- [x] `docs/DEMO.md` — demo script + screenshot checklist + test data.
+
 ---
 
-## 8. P2 execution plan, current progress & TODO
+## 8. P2 verification record & execution history
 
-This is the recommended continuation plan. Work in **vertical slices**: database/model → service → API → UI → Docker tests. Do not fill every stub in parallel.
-### Stop point and working-tree warning
-
-- The working tree intentionally contains the user's repository-hygiene changes plus the expanded P2 A/B/C/D implementation. **Do not reset, clean, or discard them.**
-- User-owned cleanup includes `.gitignore`, root/per-project `.dockerignore` files, `Dockerfile.frontend.test`, `frontend/package-lock.json`, and staged removal of previously tracked `backend.Tests/bin` / `obj` artefacts.
+P2 is **complete**. The records below are the verification evidence (no longer a TODO plan).
 
 ### Verification record — exact, do not overstate
 
-- [x] Backend Docker suite passed **110/110** — includes admin product (9), admin order (10), pricing (22), wishlist (5), profile (5), health checks (1), analytics & low-stock (4), Square catalogue (3: simulation + real-path mapping + update branch), and WebApplicationFactory integration (6) tests.
-- [x] Frontend Docker suite passed **12/12**.
+- [x] Backend Docker suite passed **130/130** — includes admin product (9), admin order (10), pricing (22), wishlist (5), profile (5), health checks (1), analytics & low-stock (4), Square catalogue (3), refresh tokens (5), email queue (4), S3 storage (4), WebApplicationFactory integration (6), and the rest.
+- [x] Frontend Docker suite passed **24/24** — pure-function helpers (12) + RTL component tests Button (7) / DataTable (5).
 - [x] `docker compose build backend frontend` succeeded; Next generates all routes and all admin/account/wishlist pages pass TypeScript/build checks.
 - [x] EF migrations applied successfully.
 - [x] Authenticated runtime acceptance: order status transitions, pricing rule effects, wishlist/profile CRUD as logged-in users.
@@ -498,25 +527,11 @@ Recorded so the roadmap is complete; do **not** start these during P2/P3.
 
 ---
 
-## 12. Suggested execution order (P2 → P3)
+## 12. Current status of P2 → P3
 
-**Remaining P2 (recommended):** HTTP/RBAC integration tests + authenticated acceptance → shipping/address capture and
-customer order timeline → wishlist heart controls → guest-cart merge → advanced search → analytics → email → PWA →
-frontend component/context coverage. CI can be added at any point and should then run all Docker verification.
+**All P2 and P3 milestones are complete.** The "remaining work" lists that previously lived here (RBAC integration tests, shipping capture, wishlist heart controls, guest-cart merge, advanced search, analytics, email, PWA, component/context coverage, CI/CD, mappers, compression, deployment docs) are all implemented — see §7 (P2) and §10 (P3) for the checked-off details.
 
-**P3 (after P2, except CI early):** P3-1 CI/CD (stand up early) → P3-3 patterns/mappers + P3-4 FE polish (alongside admin work) →
-P3-5 caching → P3-2 deeper tests → P3-6 deployment.
-
-> **Working-tree note:** P2 A/B/C/D implementations currently live in the dirty worktree rather than a new commit on
-> `main`. Preserve them and use §13 as the implementation inventory.
-
----
-
-## 13. P2 implementation inventory
-
-The original P2 scaffold has largely been replaced by working implementations. The current verified checkpoint is
-backend **110/110** Docker tests, frontend **12/12** Docker tests, and successful backend/frontend production builds
-(20 frontend routes).
+> **Working-tree note:** As of the last update, the core P1/P2/P3 work is committed and pushed. There may be a small set of in-flight local changes (e.g. product image URLs, Square sync refinements, sysadmin controller/PWA polish) — verify with `git status` before continuing.
 
 **Backend implementation**
 
@@ -546,6 +561,6 @@ backend **110/110** Docker tests, frontend **12/12** Docker tests, and successfu
 | Dashboard/analytics | `app/admin/page.tsx`, `app/admin/analytics/page.tsx` | Implemented |
 | Guest cart, shipping timeline, advanced filters, PWA | Customer-facing routes/components | Implemented |
 
-**Continuation rules:**
-1. Use Docker for all builds/tests. First reconfirm **110/110** backend and **12/12** frontend.
-2. Proceed to Priority 3 technical enhancements section.
+**Verification rules:**
+1. Use Docker for all builds/tests. Reconfirm **130/130** backend and **24/24** frontend before treating any change as verified.
+2. P1, P2, and P3 are all complete — the only remaining work is the "Planned Enhancements" scaling tail (§11), which is intentionally out of scope.

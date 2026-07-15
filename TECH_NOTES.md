@@ -821,6 +821,106 @@ docker compose up --build -d backend
 
 ---
 
+### 2026-07-15: P2/P3 Features — JWT Refresh, Async Email, S3, and the Bugs They Surfaced
+
+> Record of the technical stack used for the P14 "preferred" deliverables, the real-world pitfalls
+> hit during end-to-end verification, and the design decisions behind each. These are the kinds of
+> issues that only appear when you actually run the full stack — not when unit tests pass in isolation.
+
+#### 1. JWT Refresh Tokens — Rotation & Reuse Detection
+
+**Stack:** PostgreSQL `refresh_tokens` table · opaque tokens hashed with SHA-256 · dual HttpOnly cookies · `RandomNumberGenerator` for entropy.
+
+**What was done:** Implemented short-lived access tokens (15 min) + long-lived refresh tokens (7 days) with rotation. On refresh, the old token is revoked and a new pair issued; if a *revoked* token is presented again, the entire token family for that user is revoked (reuse detection — a stolen-token signal).
+
+**Key design: dual cookies with different scopes**
+```
+novacart_jwt      → Path=/api        (15 min, sent on every API request)
+novacart_refresh  → Path=/api/auth   (7 day, sent ONLY to auth endpoints)
+```
+Narrowing the refresh cookie's `Path` to `/api/auth` means it is never sent on product/cart/order requests — minimising its exposure surface. The access token cookie stays at `/api` so `[Authorize]` endpoints read it via `OnMessageReceived`.
+
+**Lessons learned:**
+- **Hash refresh tokens, never store them raw.** Unlike passwords (bcrypt), refresh tokens are high-entropy random values, so a plain SHA-256 hash is sufficient and faster — bcrypt's slow KDF is pointless when the input is already 256 bits of randomness.
+- **Reuse detection is the whole point of rotation.** If you rotate but don't detect reuse, a stolen token still works after one rotation. Detecting a *revoked* token being reused lets you assume compromise and revoke everything.
+- **ClockSkew matters.** The JWT bearer validation uses `ClockSkew = 30s`. For refresh flows you want access tokens to expire *promptly* — a large clock skew would undermine the short access-token lifetime.
+- **Frontend refresh must be coalesced.** When the access token expires, many in-flight requests 401 simultaneously. Without a shared `refreshPromise`, you'd trigger N parallel refresh calls (each rotating the token, invalidating the others). A module-level singleton promise collapses them to one.
+
+**The bug the frontend caught:**
+```
+// WRONG — N concurrent 401s trigger N refreshes, each invalidating the prior
+if (res.status === 401) { await refresh(); retry(); }
+
+// RIGHT — one in-flight refresh; all waiters share its result
+let refreshPromise = null;
+async function tryRefresh() {
+  if (!refreshPromise) refreshPromise = doRefresh().finally(() => refreshPromise = null);
+  return refreshPromise;
+}
+```
+
+#### 2. Async Email Queue — `Channel<T>` + `BackgroundService`
+
+**Stack:** `System.Threading.Channels.Channel<EmailMessage>` (bounded, 256, `Wait` back-pressure) · `BackgroundService` worker · scoped `EmailService` (MailKit SMTP).
+
+**What was done:** Decoupled email sending from request/webhook handling. `PaymentService` and `AdminOrderService` enqueue a snapshot `EmailMessage` and return immediately; the `EmailBackgroundWorker` drains the channel on a background thread.
+
+**Key design: the worker runs in its own DI scope**
+```csharp
+protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+{
+    await foreach (var message in _queue.ReadAllAsync(stoppingToken))
+    {
+        using var scope = _scopeFactory.CreateScope();           // ← fresh scope per message
+        var email = scope.ServiceProvider.GetRequiredService<IEmailService>();
+        // ... send ...
+    }
+}
+```
+The worker is a **Singleton** (hosted service), but `EmailService` is **Scoped** (needs `AppDbContext`/config per request). Resolving a scoped service from a singleton throws a captive-dependency error — so the worker must create its own scope via `IServiceScopeFactory` for each message.
+
+**Lessons learned:**
+- **Never pass EF entities across scopes.** The `Order` loaded in the webhook handler's scope is disposed by the time the worker processes the message. The `EmailMessage` record captures *only the primitive fields* (email, order number, total, status) — a snapshot, not a reference.
+- **Bounded channels apply back-pressure.** `BoundedChannelFullMode.Wait` makes `EnqueueAsync` block when full, naturally slowing producers under load instead of OOM-ing with an unbounded queue.
+- **A failed send must not kill the worker.** Each iteration is wrapped in try/catch; the worker logs and moves on. Otherwise one bad SMTP response poisons the entire queue.
+
+**The pre-existing bug surfaced by this work:**
+`docker-compose.prod.yml` set `Smtp__FromAddress`, but `EmailService` read `Smtp:FromEmail` — the sender address was silently ignored in production. The keys didn't match. Fixed by reading both: `config["Smtp:FromEmail"] ?? config["Smtp:FromAddress"]`.
+
+#### 3. S3 Object Storage with LocalStack — No AWS Account Needed
+
+**Stack:** `AWSSDK.S3` · `IS3StorageService` (config-driven: LocalStack or real AWS) · presigned PUT/GET URLs · `localstack/localstack:3.0` in Docker.
+
+**What was done:** Admin uploads product images directly to S3 (browser → presigned PUT URL → store returned URL). Backend never proxies file bodies. LocalStack emulates S3 locally so no AWS account/credentials are needed for dev.
+
+**Key design: config-driven provider switching (zero code change)**
+```csharp
+// ServiceUrl set → LocalStack (or any S3-compatible store)
+if (!string.IsNullOrEmpty(serviceUrl))
+    _client = new AmazonS3Client(accessKey, secretKey, new AmazonS3Config {
+        ServiceURL = serviceUrl, ForcePathStyle = true, UseHttp = ...
+    });
+else
+    _client = new AmazonS3Client(RegionEndpoint.GetBySystemName(region));  // real AWS
+```
+Production = unset `Aws:S3:ServiceUrl`, rely on the default credential chain (IAM role / env vars). Same code, different config.
+
+**Two real bugs caught only by end-to-end testing:**
+
+| Pitfall | Cause | Solution |
+|---|---|---|
+| **`NoSuchBucket` on first upload** | LocalStack 3.x does **not** auto-create buckets from the `BUCKETS` env var (despite older docs) | Added `localstack/init-s3-bucket.sh` mounted to `/etc/localstack/init/ready.d/` — runs `awslocal s3 mb` when LocalStack becomes ready |
+| **Presigned PUT URL used `https://`** but LocalStack serves plain HTTP → curl exit 60 (SSL error) | The AWS SDK emits `https` in presigned URLs by default, ignoring `UseHttp` for the URL string | Detect `ServiceUrl` starts with `http://` and post-process the generated URL: `url.Replace("https://", "http://")` |
+
+**Lesson:** Presigned URLs are computed *locally* by the SDK (no network call), so they can be unit-tested without a running S3/LocalStack — but the **scheme/host correctness** only shows up in a real round-trip. Unit tests passing did not catch the https issue; only `curl PUT` against the URL did. This is why end-to-end verification of I/O-heavy features matters even when unit tests are green.
+
+#### 4. Cross-Cutting: What "Tests Pass" Does Not Prove
+
+The single biggest lesson from this session: **130/130 unit tests passing did not catch either S3 bug.** Unit tests verified the presign *logic* (key generation, config parsing) but not the *wire format* (https vs http, bucket existence). The LocalStack bucket-creation and URL-scheme issues only surfaced when running `curl PUT` against the real presigned URL in a live stack.
+
+**Takeaway:** For features involving external systems (S3, SMTP, webhooks, payment gateways), a green unit-test suite is necessary but not sufficient. Always do at least one end-to-end round-trip (presign → PUT → GET) against a real (or LocalStack-emulated) service before declaring "done."
+
+---
 > **⚠️ IMPORTANT: Always read the official documentation before using any technology.**
 
 ---
@@ -1056,8 +1156,8 @@ Horizontal partitioning of large tables:
 **Details:**
 - **Algorithm**: HS256 (HMAC-SHA256) with server-side secret key
 - **Payload**: user ID, email, role claims
-- **Expiry**: Configurable (default 24 hours)
-- **Extraction**: `Authorization: Bearer <token>` header
+- **Expiry**: Short-lived access token (default 15 min) + long-lived refresh token (7 days) — see Refresh Tokens below
+- **Extraction**: `Authorization: Bearer <token>` header, or automatically from the `novacart_jwt` HttpOnly cookie via `OnMessageReceived`
 
 ### Token Storage Security
 
@@ -1072,6 +1172,23 @@ Horizontal partitioning of large tables:
 - `HttpOnly` — JavaScript cannot access
 - `Secure` — HTTPS only in production
 - `SameSite=Strict` — Prevents CSRF attacks
+
+### Refresh Tokens (Access + Refresh Pair)
+
+Short-lived access tokens limit the blast radius of a stolen token, but force frequent re-authentication. The refresh-token pattern keeps UX smooth while staying secure.
+
+**Two-token model:**
+| Token | Lifetime | Stored in | Purpose |
+|---|---|---|---|
+| **Access token** (JWT) | 15 min | `novacart_jwt` cookie, `Path=/api` | Authorises every API request |
+| **Refresh token** (opaque) | 7 days | `novacart_refresh` cookie, `Path=/api/auth` | Exchanged for a new access token via `POST /api/auth/refresh` |
+
+**Key practices:**
+- **Refresh tokens are opaque + hashed.** The DB stores only a SHA-256 hash (`refresh_tokens` table); the raw value is returned to the cookie once. Unlike passwords, no slow KDF (bcrypt) is needed — the token is already 256-bit random.
+- **Rotation on every refresh.** Each refresh revokes the old token and issues a new pair (`ReplacedByTokenHash` links them). A token can only be used once.
+- **Reuse detection.** If a *revoked* token is presented again, assume compromise and revoke the entire family (all tokens for that user). This is the main security benefit of rotation.
+- **Narrow refresh-cookie path.** `Path=/api/auth` means the refresh cookie is sent only to auth endpoints — never to product/cart/order requests, minimising its exposure.
+- **Frontend coalescing.** When the access token expires, many concurrent requests 401 at once. A module-level singleton `refreshPromise` collapses them into a single refresh call; otherwise N parallel refreshes would each rotate and invalidate the others.
 
 ### Role-Based Access Control (RBAC)
 
@@ -1118,6 +1235,27 @@ Horizontal partitioning of large tables:
 - ✅ Cross-service communication in microservices
 - ❌ Simple synchronous operations (MVP stage)
 - ❌ Single-service architecture
+
+### In-Process Queues with `Channel<T>` (What Novacart Uses)
+
+Before adopting a real broker (RabbitMQ), Novacart decouples slow side-effects (email) from request handling using .NET's built-in `System.Threading.Channels` — a lightweight, in-process producer/consumer queue.
+
+**How it fits:**
+```
+Request handler ──enqueue──▶ Channel<EmailMessage> (bounded) ──▶ BackgroundService worker ──▶ SMTP
+  (returns immediately)            (back-pressure)              (own DI scope per message)
+```
+
+**`Channel<T>` vs RabbitMQ — when to use which:**
+| | `Channel<T>` (in-process) | RabbitMQ (broker) |
+|---|---|---|
+| Scope | Single process | Cross-process / cross-service |
+| Persistence | ❌ Lost on restart | ✅ Survives restart (durable queues) |
+| Setup cost | Zero (built into .NET) | Infrastructure (container + config) |
+| Back-pressure | ✅ `BoundedChannelFullMode.Wait` | ✅ QoS / prefetch |
+| Use when | Decoupling within one monolith | Distributing work across services |
+
+**Novacart's choice:** The email queue is in-process because Novacart is a monolith — there's only one producer and one consumer in the same process. If the app splits into services later, swapping `Channel<T>` for a RabbitMQ consumer is a localised change. See the [Practice Log](#2026-0715-p2p3-features--jwt-refresh-async-email-s3-and-the-bugs-they-surfaced) for the scope-lifetime pitfall this surfaced.
 
 ---
 
@@ -1412,6 +1550,42 @@ stripe listen --forward-to localhost:5000/api/webhooks/stripe
 - Stripe.js creates a token on the client
 - Server receives only the token, not the card number
 - PCI compliance simplified
+
+---
+
+## Object Storage (S3)
+
+### Presigned URLs — Upload Direct to S3
+
+Instead of proxying file uploads through the backend (which buffers the whole file in memory), the backend issues a **presigned URL** and the browser uploads directly to S3.
+
+**Flow:**
+```
+Browser ──POST /api/admin/uploads/presign──▶ Backend ──▶ { uploadUrl, publicUrl }
+Browser ──PUT uploadUrl (file body)──────────▶ S3
+Browser stores publicUrl as product.ImageUrl
+```
+
+**Why presigned:**
+- Backend never handles file bytes → no memory/CPU pressure
+- Uploads go straight to S3's CDN edge → faster for large files
+- URLs expire (e.g. 5 min) → limited reuse window
+
+**Config-driven provider switching (LocalStack ↔ AWS):**
+```csharp
+// ServiceUrl set → LocalStack / S3-compatible (dev, no AWS account)
+// ServiceUrl unset → real AWS via default credential chain (prod)
+```
+
+### LocalStack — S3 Without an AWS Account
+
+[LocalStack](https://localstack.local/) emulates AWS services locally. In dev, `docker-compose` runs `localstack/localstack` so the S3 code path is fully exercised without AWS credentials or billing.
+
+**Two gotchas (caught only in end-to-end testing):**
+1. **Buckets aren't auto-created** in LocalStack 3.x despite the `BUCKETS` env var. Fix: mount an init script to `/etc/localstack/init/ready.d/` that runs `awslocal s3 mb`.
+2. **Presigned URLs default to `https://`** but LocalStack serves plain HTTP. Fix: when `ServiceUrl` is `http://`, post-process the generated URL to force `http://`.
+
+> See the [Practice Log entry](#2026-0715-p2p3-features--jwt-refresh-async-email-s3-and-the-bugs-they-surfaced) for the full debugging story.
 
 ---
 

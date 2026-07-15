@@ -133,6 +133,34 @@ Novacart is a full-stack e-commerce web application. The MVP delivers five core 
 
 ---
 
+## P14 Preferred Deliverables (Completed)
+
+> The P14 spec lists several "preferred" capabilities beyond the core requirements. These are now implemented:
+
+| Capability | Implementation |
+|---|---|
+| **JWT Refresh Tokens** | Short-lived access tokens (15 min) + rotated, DB-persisted refresh tokens (7 days) in HttpOnly cookies with reuse detection. See [Architecture §4](docs/ARCHITECTURE.md#4-cross-cutting-infrastructure). |
+| **Async Email Queue** | MailKit SMTP behind a bounded `Channel<T>` + `BackgroundService` worker, so webhook/request handlers enqueue and return immediately. See [Architecture §5](docs/ARCHITECTURE.md#5-data-flow--checkout--payment-end-to-end). |
+| **S3 Object Storage** | `IS3StorageService` with presigned PUT/GET URLs; admin uploads product images directly to S3. Backed by **LocalStack** in dev (no AWS account needed) and real AWS in production via configuration. See [Deployment Guide](docs/deployment-guide.md). |
+
+### P14 Documentation Deliverables
+
+The P14 spec requires comprehensive technical documentation. All deliverables now exist:
+
+| Deliverable | Document |
+|---|---|
+| Architecture & design | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| UI design | [docs/UI-DESIGN.md](docs/UI-DESIGN.md) |
+| Database schema | [Database_ER_Diagram.md](Database_ER_Diagram.md) + [docs/database-standards.md](docs/database-standards.md) |
+| Testing APIs | [Swagger](http://localhost:5000/swagger) (auto-generated) + containerized test suites ([Dockerfile.backend.test](Dockerfile.backend.test), [Dockerfile.frontend.test](Dockerfile.frontend.test)) |
+| Deployment | [docs/deployment-guide.md](docs/deployment-guide.md) |
+| CI/CD | [.github/workflows/ci.yml](.github/workflows/ci.yml) |
+| User guide | [docs/USER-GUIDE.md](docs/USER-GUIDE.md) |
+| Demo materials | [docs/DEMO.md](docs/DEMO.md) |
+| Technical notes | [TECH_NOTES.md](TECH_NOTES.md) |
+
+---
+
 ## Planned Enhancements
 
 > Future iterations as the platform scales. Not part of the current MVP.
