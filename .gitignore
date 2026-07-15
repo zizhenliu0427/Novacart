@@ -19,6 +19,7 @@ frontend/out/
 .idea/
 .claude/
 .cursor/
+.zcode/
 *.swp
 *.swo
 

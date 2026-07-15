@@ -29,6 +29,20 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── LocalStack (S3-compatible, dev/test only) ───────────
+  localstack:
+    image: localstack/localstack:3.0
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - ./localstack/init-s3-bucket.sh:/etc/localstack/init/ready.d/init-s3-bucket.sh:ro
+
   # ── Backend (ASP.NET Core) ──────────────────────────────
   backend:
     build:
@@ -40,11 +54,19 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=novacart;Username=postgres;Password=postgres
       - ConnectionStrings__Redis=redis:6379
+      - Aws__S3__Bucket=novacart-product-images
+      - Aws__S3__ServiceUrl=http://localstack:4566
+      - Aws__S3__Region=us-east-1
+      - Aws__S3__AccessKey=test
+      - Aws__S3__SecretKey=test
+      - Aws__S3__ForcePathStyle=true
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      localstack:
+        condition: service_started
 
   # ── Frontend (Next.js) ─────────────────────────────────
   frontend:
@@ -61,3 +83,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  localstack_data:
