@@ -8,7 +8,10 @@ using Novacart.Api.Models.Entities;
 using Novacart.Api.Models.Dtos.Payments;
 using Novacart.Api.Factories;
 using Novacart.Api.Messaging;
+using Novacart.Api.Models.Dtos.Stock;
+using Novacart.Api.Services;
 using Novacart.Api.Services.Catalog;
+using Novacart.Api.Services.Stock;
 
 namespace Novacart.Api.Services.Payments;
 
@@ -29,6 +32,7 @@ public class PaymentService : IPaymentService
     private readonly ILogger<PaymentService> _logger;
     private readonly IServiceProvider _services;
     private readonly IProductCatalogStore _catalog;
+    private readonly IStockHoldGateway _stockHold;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly string _stripeWebhookSecret;
 
@@ -43,6 +47,7 @@ public class PaymentService : IPaymentService
         ILogger<PaymentService> logger,
         IServiceProvider services,
         IProductCatalogStore catalog,
+        IStockHoldGateway stockHold,
         IHttpContextAccessor httpContextAccessor)
     {
         _db = db;
@@ -54,6 +59,7 @@ public class PaymentService : IPaymentService
         _logger = logger;
         _services = services;
         _catalog = catalog;
+        _stockHold = stockHold;
         _httpContextAccessor = httpContextAccessor;
         _stripeWebhookSecret = config["Stripe:WebhookSecret"] ?? string.Empty;
     }
@@ -100,11 +106,34 @@ public class PaymentService : IPaymentService
         _db.Orders.Add(order);
         await _db.SaveChangesAsync();
 
+        var holdLines = cart.Items
+            .Select(i => new StockHoldLine(i.ProductId, i.Quantity))
+            .ToList();
+
+        var holdResult = await _stockHold.TryHoldForOrderAsync(order.Id, holdLines);
+        if (!holdResult.Success)
+        {
+            _db.Orders.Remove(order);
+            await _db.SaveChangesAsync();
+            throw new AppException(
+                holdResult.Error ?? "Unable to reserve stock for checkout.",
+                StatusCodes.Status409Conflict);
+        }
+
         // 4. Resolve payment gateway strategy via PaymentStrategyFactory (P3-3: Factory Pattern)
         var strategy = _strategyFactory.Create(gateway);
 
         // 5. Generate Session URL
-        var sessionResult = await strategy.CreateCheckoutSessionAsync(order, request.SuccessUrl, request.CancelUrl);
+        PaymentSessionResult sessionResult;
+        try
+        {
+            sessionResult = await strategy.CreateCheckoutSessionAsync(order, request.SuccessUrl, request.CancelUrl);
+        }
+        catch
+        {
+            await _stockHold.ReleaseForOrderAsync(order.Id);
+            throw;
+        }
 
         // 6. Record transaction details as pending
         var paymentMethod = await _db.PaymentMethods.FirstOrDefaultAsync(pm => pm.Code == strategy.Code)
@@ -189,6 +218,18 @@ public class PaymentService : IPaymentService
                     // Update DB states
                     await ExecutePaymentCompletionAsync(orderId, session.Id, json, webhookLog);
                 }
+            }
+        }
+        else if (stripeEvent.Type == Events.CheckoutSessionExpired)
+        {
+            var session = stripeEvent.Data.Object as Stripe.Checkout.Session;
+            if (session?.Metadata.TryGetValue("OrderId", out var orderIdStr) == true &&
+                Guid.TryParse(orderIdStr, out var orderId))
+            {
+                await _stockHold.ReleaseForOrderAsync(orderId);
+                webhookLog.Processed = true;
+                webhookLog.ProcessedAt = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
             }
         }
     }
@@ -349,3 +390,4 @@ public class PaymentService : IPaymentService
         throw AppException.NotFound("User");
     }
 }
+

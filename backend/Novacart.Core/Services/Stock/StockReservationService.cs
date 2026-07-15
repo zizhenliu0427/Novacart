@@ -23,11 +23,13 @@ public interface IStockReservationService
 }
 
 /// <summary>
-/// Idempotent stock reservation from <see cref="PaymentCompleted"/> payload (Product DB only).
+/// Idempotent stock confirmation from <see cref="PaymentCompleted"/> (Product DB).
+/// Confirms checkout holds and atomically decrements stock.
 /// </summary>
 public class StockReservationService(
     AppDbContext db,
     IRedisDistributedLockService locks,
+    IProductStockRepository stock,
     ILogger<StockReservationService> logger) : IStockReservationService
 {
     private static readonly TimeSpan LockExpiry = TimeSpan.FromSeconds(30);
@@ -59,6 +61,7 @@ public class StockReservationService(
         var handles = await locks.TryAcquireAllAsync(lockKeys, LockExpiry, LockWait, cancellationToken);
         if (handles is null)
         {
+            StockInventoryMetrics.LockNotAcquired.Add(1);
             logger.LogWarning(
                 "StockReservation: could not acquire locks for order {OrderId} ({KeyCount} products)",
                 orderId,
@@ -75,32 +78,67 @@ public class StockReservationService(
             .GroupBy(l => l.ProductId)
             .ToDictionary(g => g.Key, g => g.Sum(l => l.Quantity));
 
-        var productIds = requiredByProduct.Keys.ToList();
-        var products = await db.Products
-            .Where(p => productIds.Contains(p.Id))
-            .ToDictionaryAsync(p => p.Id, cancellationToken);
+        var activeHolds = await db.Set<StockHold>()
+            .Where(h => h.OrderId == orderId && h.Status == StockHoldStatuses.Active && h.ExpiresAt > DateTime.UtcNow)
+            .ToListAsync(cancellationToken);
 
-        foreach (var (productId, qty) in requiredByProduct)
+        if (activeHolds.Count > 0)
         {
-            if (!products.TryGetValue(productId, out var product) || product.StockQuantity < qty)
+            var heldByProduct = activeHolds
+                .GroupBy(h => h.ProductId)
+                .ToDictionary(g => g.Key, g => g.Sum(h => h.Quantity));
+
+            foreach (var (productId, qty) in requiredByProduct)
             {
-                db.Set<ProcessedStockOrder>().Add(new ProcessedStockOrder
+                if (!heldByProduct.TryGetValue(productId, out var heldQty) || heldQty < qty)
                 {
-                    OrderId = orderId,
-                    Outcome = StockReservationOutcomes.InsufficientStock,
-                    ProcessedAt = DateTime.UtcNow,
-                });
-                await db.SaveChangesAsync(cancellationToken);
-                logger.LogWarning(
-                    "StockReservation: insufficient stock for product {ProductId} on order {OrderId}",
-                    productId,
-                    orderId);
-                return StockReservationOutcome.InsufficientStock;
+                    await RecordInsufficientAsync(orderId, cancellationToken);
+                    return StockReservationOutcome.InsufficientStock;
+                }
+            }
+        }
+        else
+        {
+            foreach (var (productId, qty) in requiredByProduct)
+            {
+                var product = await db.Products.AsNoTracking()
+                    .FirstOrDefaultAsync(p => p.Id == productId, cancellationToken);
+
+                var heldByOthers = await stock.GetActiveHoldQuantityAsync(productId, orderId, cancellationToken);
+                var available = (product?.StockQuantity ?? 0) - heldByOthers;
+                if (product is null || !product.IsActive || available < qty)
+                {
+                    await RecordInsufficientAsync(orderId, cancellationToken);
+                    return StockReservationOutcome.InsufficientStock;
+                }
             }
         }
 
         foreach (var (productId, qty) in requiredByProduct)
-            products[productId].StockQuantity -= qty;
+        {
+            var remaining = await stock.TryDecrementStockAsync(productId, qty, cancellationToken);
+            if (remaining is null)
+            {
+                StockInventoryMetrics.AtomicDecrementFailure.Add(1);
+                StockInventoryMetrics.ReservationInsufficient.Add(1);
+                await RecordInsufficientAsync(orderId, cancellationToken);
+                logger.LogWarning(
+                    "StockReservation: atomic decrement failed for product {ProductId} on order {OrderId}",
+                    productId,
+                    orderId);
+                return StockReservationOutcome.InsufficientStock;
+            }
+
+            StockInventoryMetrics.AtomicDecrementSuccess.Add(1);
+        }
+
+        if (activeHolds.Count > 0)
+        {
+            foreach (var hold in activeHolds)
+                hold.Status = StockHoldStatuses.Confirmed;
+
+            StockInventoryMetrics.HoldsConfirmed.Add(activeHolds.Count);
+        }
 
         db.Set<ProcessedStockOrder>().Add(new ProcessedStockOrder
         {
@@ -113,6 +151,17 @@ public class StockReservationService(
 
         logger.LogInformation("StockReservation: stock reserved for order {OrderId}", orderId);
         return StockReservationOutcome.Reserved;
+    }
+
+    private async Task RecordInsufficientAsync(Guid orderId, CancellationToken cancellationToken)
+    {
+        db.Set<ProcessedStockOrder>().Add(new ProcessedStockOrder
+        {
+            OrderId = orderId,
+            Outcome = StockReservationOutcomes.InsufficientStock,
+            ProcessedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     private sealed class LockScope(IReadOnlyList<IDistributedLockHandle> handles) : IAsyncDisposable

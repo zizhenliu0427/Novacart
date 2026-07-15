@@ -307,6 +307,16 @@ public class AppDbContext : DbContext
             e.Property(p => p.Outcome).HasMaxLength(32);
         });
 
+        modelBuilder.Entity<StockHold>(e =>
+        {
+            e.ToTable("stock_holds");
+            e.HasKey(h => h.Id);
+            e.Property(h => h.Status).HasMaxLength(16).IsRequired();
+            e.HasIndex(h => h.OrderId).HasDatabaseName("idx_stock_holds_order_id");
+            e.HasIndex(h => new { h.ProductId, h.Status, h.ExpiresAt })
+                .HasDatabaseName("idx_stock_holds_product_active");
+        });
+
         // MassTransit EF Outbox / Inbox (Order service)
         modelBuilder.AddInboxStateEntity();
         modelBuilder.AddOutboxMessageEntity();
@@ -315,6 +325,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<OrderCheckoutState>(entity =>
         {
             entity.ToTable("order_checkout_sagas");
+            entity.HasKey(x => x.CorrelationId);
             entity.Property(x => x.CurrentState).HasMaxLength(64);
             entity.Property(x => x.OrderNumber).HasMaxLength(40);
             entity.Property(x => x.UserEmail).HasMaxLength(256);

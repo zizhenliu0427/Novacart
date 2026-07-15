@@ -29,7 +29,8 @@ public class StockReservationServiceTests
             [new PaymentStockLineItem(product.Id, 2)]);
 
         var locks = new FakeDistributedLockService();
-        var svc = new StockReservationService(db, locks, NullLogger<StockReservationService>.Instance);
+        var svc = new StockReservationService(
+            db, locks, new ProductStockRepository(db), NullLogger<StockReservationService>.Instance);
 
         var outcome = await svc.TryReserveAsync(payment);
 
@@ -58,7 +59,7 @@ public class StockReservationServiceTests
             [new PaymentStockLineItem(product.Id, 1)]);
 
         var svc = new StockReservationService(
-            db, new FakeDistributedLockService(), NullLogger<StockReservationService>.Instance);
+            db, new FakeDistributedLockService(), new ProductStockRepository(db), NullLogger<StockReservationService>.Instance);
 
         var outcome = await svc.TryReserveAsync(payment);
 

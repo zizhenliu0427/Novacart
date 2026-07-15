@@ -76,27 +76,65 @@
 
 **Trigger:** Postgres ILIKE + tag/category facets fail on relevance, language, or latency at scale.
 
-- [ ] Add ElasticSearch (or OpenSearch) to dev/prod stack
-- [ ] Index pipeline: product create/update/delete → ES document sync (outbox or direct)
-- [ ] Search API: multi-match, filters (category, price range, tags, metadata fields)
-- [ ] Frontend: wire `/products` search to ES-backed endpoint (keep URL-driven facets)
-- [ ] Fallback to Postgres search if ES unavailable
-- [ ] Benchmark vs current `ProductService` ILIKE path
+**Status (2026-07-16):** Implemented on Product API — multi-match search with Postgres fallback.
+
+- [x] Add ElasticSearch (or OpenSearch) to dev/prod stack
+- [x] Index pipeline: product create/update/delete → ES document sync (direct + startup reindex)
+- [x] Search API: multi-match, filters (category, price range, tags, metadata fields)
+- [x] Frontend: wire `/products` search to ES-backed endpoint (keep URL-driven facets)
+- [x] Fallback to Postgres search if ES unavailable
+- [x] Benchmark vs current `ProductService` ILIKE path — see [docs/PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md)
 
 ---
 
-## PE-4 — Distributed Lock (Redis Redlock)
+## PE-4 — Distributed Lock & inventory hardening (Redis)
 
-> **Status:** Required **with PE-1** when Product/Order run as multiple replicas. Implement in Product stock consumer.
+> **Status:** **Complete** (baseline + production hardening, 2026-07-16). **PE-6 (Redis cart)** remains separate.
 
-**Purpose:** Atomic inventory deduction across multiple app instances.
+**Purpose:** Prevent oversell and protect hot inventory paths when Product (and checkout) run at multiple replicas.
 
-**Trigger:** PE-1 horizontal scaling; flash-sale oversell risk.
+**Trigger:** PE-1 horizontal scaling; flash-sale or checkout burst; oversell risk beyond single-node Redis.
 
-- [x] *(Track under PE-1)* Redlock in Product `ReserveStockConsumer` / `StockReservationService`
+**Implemented:** Redlock + checkout holds (TTL) + atomic SQL decrement + YARP rate limiting + Redis HA config + OTel stock metrics. See [docs/PE4-PRODUCTION-HARDENING.md](docs/PE4-PRODUCTION-HARDENING.md).
+
+### Done (baseline)
+
+- [x] *(PE-1)* Redlock in Product `ReserveStockConsumer` / `StockReservationService`
 - [x] Lock key per `ProductId` with short TTL (`novacart:stock:lock:{productId}`, 30s expiry)
-- [ ] Load test concurrent checkout on low-stock SKU
+- [x] Load test concurrent checkout on low-stock SKU (`StockReservationConcurrencyTests` + Docker Redis)
 - [x] Document lock semantics in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+
+### Production hardening
+
+- [x] **Stock reservation (预占库存):** hold at checkout / Stripe session creation; TTL expiry worker; release on session expired / stock failure
+- [x] **DB atomic decrement:** conditional `UPDATE … WHERE stock_quantity >= @q` in `ProductStockRepository`
+- [x] **Rate limiting / queuing:** YARP fixed-window limiter on `/api/checkout` (+ queue); webhook excluded
+- [x] **Redis HA:** `Redis:Configuration` connection string + [docs/PE4-REDIS-HA.md](docs/PE4-REDIS-HA.md) (Sentinel / Cluster)
+- [x] **Observability:** `Novacart.Stock` OTel meter (lock wait, holds, atomic decrement, lock failures)
+
+### Spring Cloud — large e-commerce inventory stack (reference)
+
+Typical **Java / Spring Cloud** mall architecture maps roughly as follows (Novacart .NET equivalents in parentheses):
+
+| Capability | Spring Cloud / ecosystem (typical) | Novacart today | Target (PE-4+) |
+|---|---|---|---|
+| Service split | Spring Boot microservices | ✅ Auth / Product / Cart / Order | — |
+| API gateway | Spring Cloud Gateway | ✅ YARP | Rate limit (PE-4) |
+| Discovery | Nacos / Eureka | ✅ Aspire / K8s Services | — |
+| Sync resilience | OpenFeign + Sentinel / Resilience4j | ✅ Polly + Refit | Rate limit (PE-4) |
+| Async checkout | Spring Cloud Stream + RabbitMQ | ✅ MassTransit + Saga | — |
+| Outbox / reliability | Transactional outbox pattern | ✅ MassTransit EF Outbox | — |
+| **Inventory lock** | Redisson / Redis lock | ✅ `RedisDistributedLockService` | HA Redis (PE-4) |
+| **Inventory reservation** | Custom + Redis / DB hold table | ❌ Deduct on payment webhook only | Reservation + TTL (PE-4) |
+| **Atomic stock SQL** | MyBatis `UPDATE … WHERE stock >=` | ⚠️ EF read-check-write under lock | Conditional UPDATE (PE-4) |
+| Flash sale | Sentinel limit + MQ削峰 + 库存预热 | ❌ | Gateway queue (PE-4) |
+| Search | Elasticsearch | ✅ PE-3 | — |
+| Cart cache | Redis cart | Postgres cart | PE-6 (separate) |
+| Config / secrets | Nacos / Spring Cloud Config | env / K8s secrets | — |
+| Tracing | Sleuth / Micrometer + Zipkin | ✅ OpenTelemetry + Jaeger | PE-4 stock metrics |
+| Seata (distributed TX) | 2PC across services | ❌ Saga + outbox instead | Not planned (Saga preferred) |
+
+**Takeaway:** Spring malls rarely rely on **only** a Redis lock — they combine **reservation**, **DB conditional update**, **MQ + Saga**, **gateway限流**, and **Redis HA**. Novacart baseline (PE-1 + PE-4 lock + Saga) matches mid-tier; PE-4 hardening closes the gap to common production practice.
 
 ---
 

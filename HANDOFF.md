@@ -5,7 +5,7 @@
 > project, the conventions to follow, the frontend design system to build against, and the
 > **Priority 2 (P2)** & **Priority 3 (P3)** feature-by-feature implementation checklist.
 >
-> **Status:** Priority 1 (MVP), Priority 2 (P2), Priority 3 (P3), and P14 are **complete**. **PE-1 microservices** are **implemented** (default `docker compose up`). Remaining Planned Enhancements (PE-3+, etc.) are in §11 and **[TODO.md](TODO.md)**.
+> **Status:** Priority 1 (MVP), Priority 2 (P2), Priority 3 (P3), and P14 are **complete**. **PE-1 / PE-2 / PE-3 / PE-4 / PE-10** are **implemented** (default `docker compose up`). **PE-6+** remain in [TODO.md](TODO.md).
 >
 > Last updated: 2026-07-15 — P14 preferred + docs complete: JWT refresh tokens (rotation + reuse detection), async email queue (Channel + BackgroundService), S3 object storage with LocalStack (no AWS account needed), plus ARCHITECTURE/UI-DESIGN/USER-GUIDE/DEMO docs. Backend **130** tests, frontend **24** tests, all passing.
 
@@ -521,8 +521,8 @@ All items below are **not yet implemented** — explicitly out of scope for P1/P
 |---|---|---|---|
 | PE-1 | **Microservices (final)** | **.NET Aspire** + **YARP** + **Polly**; Auth / Product / Cart / Order. **MassTransit + RabbitMQ**, **Transactional Outbox**, **MassTransit Saga** for checkout. Design: [docs/MICROSERVICES-PE1.md](docs/MICROSERVICES-PE1.md). | Multiple teams, uneven scaling, or durable messaging needed across replicas. |
 | PE-2 | **RabbitMQ** | ✅ **Part of PE-1 final** — MassTransit transport; replaces in-process `EmailQueue` at scale. | (See PE-1.) |
-| PE-3 | **ElasticSearch** | Full-text search for product catalogues (material, style, price). | Postgres ILIKE + tag facets no longer meet relevance/latency at catalogue scale. |
-| PE-4 | **Distributed Lock (Redis)** | **Redlock** — **required with PE-1** multi-instance stock consumers. | Multiple backend replicas; flash-sale oversell risk. |
+| PE-3 | **ElasticSearch** | ✅ Full-text product search (Product API; Postgres fallback). | — |
+| PE-4 | **Distributed Lock & inventory hardening** | **✅ Complete** — Redlock + checkout holds (TTL) + atomic SQL + YARP rate limit + Redis HA docs + OTel metrics. **PE-6 cart ≠ stock lock.** | — |
 | PE-5 | **Async Order Processing** | ✅ **Part of PE-1 final** — MassTransit Saga (payment → inventory → email → clear cart). | (See PE-1.) |
 | PE-6 | **Cart Optimisation** | Redis-backed cart: sub-ms reads, cross-device sync, guest-to-user merge. | PostgreSQL cart latency or cross-device sync becomes a bottleneck (current guest merge already works in Postgres). |
 | PE-7 | **SQL Sharding** | Horizontal partitioning of large tables by date or user ID. | Single Postgres instance hits storage/IO limits on orders or audit tables. |
@@ -542,9 +542,11 @@ Work in vertical slices; each PE item in [TODO.md](TODO.md) expands into concret
 6. **PE-1 Phase 7:** Jaeger OTLP in Docker; Order microservice `MassTransitEmailQueue`; Testcontainers + admin DLQ UI. ✅
 7. **PE-1 Phase 8:** Refit catalog client; AppHost 4 DB; prod compose + K8s probes; gateway route tests. ✅
 8. **PE-1 seal:** Stripe refund; saga integration tests; E2E smoke script; [DATABASE-PER-SERVICE.md](docs/DATABASE-PER-SERVICE.md). ✅ — **PE-1 production-ready for dev/staging.**
-3. **PE-3** (ElasticSearch) is independent — replaces `ProductService` search path.
-4. **PE-6** (Redis cart) optional without full PE-1 if staying monolith.
-5. **PE-9 / PE-10** are product-driven; PE-10 i18n ✅ done.
+9. **PE-3:** ElasticSearch on Product API ✅ — see [docs/PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md).
+10. **PE-4 baseline:** Redlock + `StockReservationConcurrencyTests` ✅ — see [TODO.md § PE-4](TODO.md#pe-4--distributed-lock--inventory-hardening-redis).
+11. **PE-4 hardening (next):** stock reservation + atomic SQL + gateway rate limit + Redis HA + observability — typical complement to Spring Cloud mall inventory stacks (see TODO Spring Cloud table).
+3. **PE-6** (Redis cart) optional without full PE-1 if staying monolith — **does not replace PE-4 stock lock or reservation.**
+4. **PE-9 / PE-10** are product-driven; PE-10 i18n ✅ done.
 
 #### Per-phase test gate (do not skip the check; only add tests when warranted)
 

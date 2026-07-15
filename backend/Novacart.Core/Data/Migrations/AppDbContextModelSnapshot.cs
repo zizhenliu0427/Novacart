@@ -251,6 +251,43 @@ namespace Novacart.Api.Data.Migrations
                     b.ToTable("processed_stock_orders", (string)null);
                 });
 
+            modelBuilder.Entity("Novacart.Api.Models.Entities.StockHold", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId")
+                        .HasDatabaseName("idx_stock_holds_order_id");
+
+                    b.HasIndex("ProductId", "Status", "ExpiresAt")
+                        .HasDatabaseName("idx_stock_holds_product_active");
+
+                    b.ToTable("stock_holds", (string)null);
+                });
+
             modelBuilder.Entity("Novacart.Api.Models.Entities.Cart", b =>
                 {
                     b.Property<Guid>("Id")

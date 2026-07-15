@@ -919,6 +919,143 @@ else
 
 **结论：** 对涉及外部系统的功能（S3、SMTP、webhook、支付网关），单元测试全绿是必要但不充分的。在宣布"完成"之前，至少做一次完整的端到端往返（presign → PUT → GET）对着真实（或 LocalStack 模拟的）服务。
 
+### 2026-07-16：PE-1 ~ PE-4 — 微服务、ElasticSearch、分布式锁
+
+> **Planned Enhancements** 实施过程中的技术栈、踩坑与修复记录。任务清单：[TODO.md](TODO.md)、[HANDOFF.md §11](HANDOFF.md#11-planned-enhancements-scaling-tail--not-scheduled)。设计文档：[docs/MICROSERVICES-PE1.md](docs/MICROSERVICES-PE1.md)、[docs/PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md)。
+
+#### 技术栈一览（PE-1 ~ PE-4）
+
+| PE | 范围 | 技术栈 |
+|---|---|---|
+| **PE-1** | 微服务（默认 `docker compose up`） | **.NET Aspire** AppHost · **YARP** 网关 · **Polly** + **Refit** · **MassTransit** + **RabbitMQ** · **Transactional Outbox** · **MassTransit Saga** · 4 个逻辑库（auth / product / cart / order） · **OpenTelemetry** + **Jaeger** · K8s 骨架 |
+| **PE-2** | 异步消息 | 并入 PE-1 — MassTransit 替代进程内 `EmailQueue` |
+| **PE-5** | 异步结账 | 并入 PE-1 — `OrderCheckoutStateMachine`（支付 → 扣库存 → 邮件 → 清购物车） |
+| **PE-3** | 全文搜索 | **Elasticsearch 8.15** · `Elastic.Clients.Elasticsearch` · 仅 Product API；Postgres `ILIKE` 回退 |
+| **PE-4 基线** | 库存锁 | **Redis 7** · Redlock 风格 `RedisDistributedLockService` · `StockReservationService` + `ReserveStockConsumer` · Testcontainers 并发测试 |
+
+#### 0. 流程与验证类错误（贯穿 PE-1 ~ PE-4）
+
+| 错误 | 技术 / 场景 | 修复 / 教训 |
+|---|---|---|
+| **未经用户要求代其 commit** | Git 流程 | 仅用户明确要求时才 commit；保留改动可用 `git reset HEAD~1` |
+| **以「本机无 .NET 8」为由跳过 Docker 验证** | HANDOFF §2 | 项目标准是 `docker compose down && docker compose up --build -d` + `db-migrate` + 冒烟测试，不是宿主机 `dotnet run` |
+| **把 exit code 139 当成 SIGSEGV** | Linux 容器里的 .NET | 先看容器日志。本项目里 139 是**未捕获的启动异常**（EF 模型 + DI），不是段错误 |
+| **代码修完后仍用旧镜像** | Docker 层缓存 | EF/DI 变更后必须 `docker compose up --build -d`；旧 `auth-api` 镜像仍缺 Saga 主键配置 |
+
+#### 1. PE-1 / PE-2 / PE-5 — 微服务、消息、Saga
+
+**做了什么：** 单体拆为 Auth / Product / Cart / Order，经 YARP 统一入口；结账用 MassTransit Saga + Outbox；邮件走 Order 服务的 MassTransit 消费者；database-per-service（4 个 PostgreSQL 逻辑库）。
+
+**踩坑：**
+
+| 坑 | 原因 | 解决方案 |
+|---|---|---|
+| **`db-migrate` 失败** | 多个 DbContext 时未指定 `--context` | `migrate-databases.sh` 使用 `--context AppDbContext` + `AppDbContextFactory` |
+| **Saga 持久化报错** — `OrderCheckoutState` 无主键 | MassTransit EF Saga 实体未配置 | `AppDbContext`：`HasKey(x => x.CorrelationId)` |
+| **迁移 startup 项目校验失败** | 用 `Order.Api` 作 startup 会触发全量 `ValidateOnBuild` | 迁移容器只用 **Core + ServiceDefaults**，不启动完整 API |
+| **`cart-api` / `order-api` 启动崩溃** — 无法解析 `IPricingService` | `IPricingService` 只在 `AddNovacartProduct()` 注册 | 移到**共享基础设施** `AddNovacartInfrastructure()` |
+| **`Dockerfile.migrate` 构建失败** | 缺少项目引用 | 复制 `Novacart.ServiceDefaults` 到 migrate 镜像 |
+| **Windows 主机端口 9200 / 16686 冲突** | 本机已占用 ES 或 Jaeger 端口 | `docker-compose.yml` 去掉 ES/Jaeger 的**主机端口映射**，仅容器内网访问 |
+| **旧单体容器仍在跑** | 拆分前 compose 的 `novacart-backend-1` | `docker compose down --remove-orphans` |
+
+**经验教训：**
+- **跨服务共用的 DI 必须放在共享扩展里** — Cart/Order 需要的（定价、锁、Outbox 等）进 `AddNovacartInfrastructure`，不要只挂在一个服务扩展上。
+- **Saga 实体必须显式配置 EF 主键** — MassTransit 不会自动把 `CorrelationId` 当 PK。
+- **迁移工具链要最小化** — 专用 migrate 镜像避免把整棵服务 DI 图拉进设计时校验。
+- **PE-2、PE-5 不是独立里程碑** — 跟 PE-1 一起交付；RabbitMQ + Saga + Outbox 同一波上线。
+- **跨服务 DI 或 EF 模型变更后，必须验证完整 compose**，不能只看单元测试。
+
+#### 2. PE-3 — ElasticSearch 商品搜索
+
+**技术栈：** Elasticsearch 8.15 · `Elastic.Clients.Elasticsearch` 8.15 · 索引 `novacart-products` · Product API · `PagedResult.searchEngine` 可选字段。
+
+**做了什么：** 有关键词（`?q=`）且 ES 健康时走 ES；Admin/Square 变更触发索引；启动 reindex；失败自动回退 Postgres。
+
+**踩坑：**
+
+| 坑 | 原因 | 解决方案 |
+|---|---|---|
+| **C# 客户端编译错误** | ES 8.x 客户端 API 与旧 NEST 不同 | 使用 `Elastic.Clients.Elasticsearch`：`.Term(new TermsQueryField(...))`、`NumberRange`、`.Match()` 的 union 类型 |
+| **Indexer 与 DbContext 生命周期** | Singleton Indexer 持有 Scoped DbContext | `ElasticProductSearchIndexer` 注册为 **Scoped**（或通过 scope factory 解析） |
+| **InMemory EF 无法测 ILIKE 回退** | InMemory 不支持 Postgres `ILIKE` | ES 路径用 Testcontainers；回退路径在集成/Docker 测，不用 InMemory |
+| **测试容器内再跑 Testcontainers** | 嵌套 Docker / 无 socket | 懒加载容器；无 Docker 时 skip |
+| **以为 ES 必须映射主机 9200** | 开发机常已占用 9200 | ES 仅在 Docker 网络内；网关/product-api 访问 `http://elasticsearch:9200` |
+
+**经验教训：**
+- **无关键词的浏览仍走 Postgres** — ES 负责关键词相关性；facet/sort 逻辑不变。
+- **必须实现回退并在响应里标明** — `searchEngine: "postgres"` 便于运维判断走了哪条路径。
+- **新客户端要读官方文档** — `Elastic.Clients.Elasticsearch` 不是 NEST 的直接替换。
+- 配置与同步表见 [docs/PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md)。
+
+#### 3. PE-4 — 分布式锁与库存（基线 + 生产差距）
+
+**技术栈：** Redis 7 · `RedisDistributedLockService`（Redlock 风格，开发环境单 master） · Product 侧 `StockReservationService` · `StockReservationConcurrencyTests`（50 并发、5 库存、Testcontainers Redis）。
+
+**基线已完成：** Saga 消费者在扣库存外加锁；并发集成测试证明并行 `TryReserveAsync` 不会超卖。
+
+**踩坑 / 误解：**
+
+| 坑 | 原因 | 解决方案 / 目标 |
+|---|---|---|
+| **单元测试里的假锁永远成功** | Mock 无法模拟竞争 | 真实并发覆盖需要 **Testcontainers Redis**，不能靠 Mock |
+| **「有 Redis 锁 = 生产级库存」** | 锁 alone 不覆盖预占、秒杀、DB 竞态 | PE-4 **加固**仍待做：PaymentIntent TTL 预占、`UPDATE … WHERE stock >= qty`、YARP 限流、Redis Sentinel/Cluster、库存/锁指标 |
+| **把 PE-6 和 PE-4 混为一谈** | Redis 购物车缓存 vs 库存锁 | **PE-6** 优化购物车读；**PE-4** 保护库存写 — 不同边界 |
+
+**Spring Cloud 大型购物网站 — 完整对照**
+
+大型 Spring Cloud 购物网站通常**不是只加一个 Redis 锁**，而是叠这些层：
+
+| 能力 | Spring 生态常见 | Novacart 现状 |
+|---|---|---|
+| **微服务拆分** | Spring Boot 多服务 | ✅ PE-1 |
+| **网关** | Spring Cloud Gateway | ✅ YARP |
+| **注册发现** | Nacos / Eureka | ✅ Aspire / K8s |
+| **同步调用容错** | OpenFeign + Sentinel | ✅ Refit + Polly |
+| **异步结账** | Spring Cloud Stream + Saga | ✅ MassTransit Saga |
+| **可靠消息** | Outbox | ✅ MassTransit Outbox |
+| **扣库存锁** | Redisson | ✅ Redlock 基线 |
+| **预占库存** | Redis / DB hold + TTL | ❌ → PE-4 加固 |
+| **DB 条件更新** | MyBatis 乐观 / 条件 `UPDATE` | ❌ → PE-4 加固 |
+| **秒杀限流** | Sentinel + MQ 削峰 | ❌ → PE-4 加固 |
+| **搜索** | Elasticsearch | ✅ PE-3 |
+| **购物车** | Redis | 当前 Postgres → **PE-6** |
+| **链路追踪** | Sleuth / Zipkin | ✅ OpenTelemetry + Jaeger |
+| **分布式事务 Seata** | 2PC | ❌ 有意不用 — **Saga 更常见**（跨服务不做 2PC） |
+
+**生产上常补的几层（按优先级）：**
+
+1. **预占库存（reservation）** — 下单 / 创建 PaymentIntent 时占坑，超时释放（TTL）。
+2. **DB 原子扣减** — 一条语句完成，避免 read 与 write 之间的竞态：
+   ```sql
+   UPDATE products SET stock = stock - @q
+   WHERE id = @id AND stock >= @q;
+   ```
+3. **限流 / 排队** — 网关或秒杀专用队列，在 burst 流量下保护 Redis 和 DB。
+4. **Redis 高可用** — Sentinel / Cluster；真要 Redlock 则需多 master quorum。
+5. **PE-6 Redis 购物车** — **不同问题**（读快、跨设备同步）；**不能**替代扣库存锁或预占。
+6. **监控** — 锁等待时间、`LockNotAcquired` 次数、库存不一致告警。
+
+**针对 Novacart 的结论：**
+
+| 问题 | 答案 |
+|---|---|
+| **只有 Redis 锁够吗？** | **不够** — 只是库存并发的一环，不是全部。 |
+| **对当前 Novacart 阶段够吗？** | **够用** — 微服务 + Saga + 幂等 + Redis 锁，已覆盖「支付成功后扣库存、多副本不超卖」。 |
+| **要上真实大促 / 秒杀？** | **还不够** — 还要预占、DB 条件更新、限流、HA Redis；PE-6 是购物车优化，不是库存锁的替代。 |
+
+**总结：** Novacart 基线（PE-1 + PE-3 + PE-4 锁 + Saga）已对齐中级生产栈。与典型 Spring 商城生产实践的差距，见 [TODO.md § PE-4](TODO.md#pe-4--distributed-lock--inventory-hardening-redis)（预占、原子 SQL、限流、Redis HA、指标）和 [PE-6](TODO.md)（购物车缓存）。
+
+#### 4. 「测试通过」仍证明不了什么（PE-1 ~ PE-4）
+
+与 S3 那次同一主题：
+
+- **单元测试全绿**没抓到 Cart/Order 启动 DI 失败 — 只有 **完整 compose up** 才暴露。
+- **InMemory EF** 没验证 Postgres `ILIKE` 回退或真实 ES 查询。
+- **Mock 锁**没证明并发 — **Testcontainers Redis** 才证明。
+- **HANDOFF 冒烟**（`GET /api/products?q=…` → `searchEngine: "elasticsearch"`）是 PE-3 的验收标准。
+
+**经验法则：** 任何涉及**多容器**、**外部基础设施**（ES、Redis、RabbitMQ）或**共享 DI** 的 PE，完成后跑 `docker compose up --build -d`、确认 `db-migrate` exit 0，再经网关打接口 — 不要只跑宿主机 `dotnet test`。
+
 ---
 > **⚠️ 重要：使用任何技术之前，务必先阅读官方文档。**
 > 不需要读完全部文档 — 先看 Quick Start / Tutorial，跑通最小示例，然后边写边查。官方文档是唯一真实来源。

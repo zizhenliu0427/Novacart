@@ -26,6 +26,7 @@ public class OrderCheckoutCompletionServiceTests
             db,
             new NullRedisCacheService(),
             new FakeStripeRefundService(),
+            new FakeStockHoldGateway(),
             NullLogger<OrderCheckoutCompletionService>.Instance);
 
         var result = await svc.TryMarkPaidAsync(order.Id);
@@ -56,6 +57,7 @@ public class OrderCheckoutCompletionServiceTests
             db,
             new NullRedisCacheService(),
             new FakeStripeRefundService(),
+            new FakeStockHoldGateway(),
             NullLogger<OrderCheckoutCompletionService>.Instance);
 
         var result = await svc.TryMarkPaidAsync(order.Id);
@@ -77,6 +79,7 @@ public class OrderCheckoutCompletionServiceTests
             db,
             new NullRedisCacheService(),
             new FakeStripeRefundService(),
+            new FakeStockHoldGateway(),
             NullLogger<OrderCheckoutCompletionService>.Instance);
 
         await svc.CancelAfterStockFailureAsync(order.Id, "Insufficient stock");
@@ -114,6 +117,7 @@ public class OrderCheckoutCompletionServiceTests
             db,
             new NullRedisCacheService(),
             refund,
+            new FakeStockHoldGateway(),
             NullLogger<OrderCheckoutCompletionService>.Instance);
 
         await svc.CancelAfterStockFailureAsync(order.Id, "Insufficient stock");

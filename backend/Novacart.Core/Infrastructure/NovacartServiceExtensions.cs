@@ -19,6 +19,7 @@ using Novacart.Api.Services.Orders;
 using Novacart.Api.Services.Payments;
 using Novacart.Api.Services.Stock;
 using Novacart.Api.Infrastructure.Messaging;
+using Novacart.Api.Search;
 using Novacart.Api.Storage;
 using StackExchange.Redis;
 using Stripe;
@@ -36,10 +37,16 @@ public static class NovacartServiceExtensions
         services.Configure<MicroservicesOptions>(configuration.GetSection(MicroservicesOptions.SectionName));
 
         services.AddSingleton<IConnectionMultiplexer>(_ =>
-            ConnectionMultiplexer.Connect(configuration.GetConnectionString("Redis") ?? "localhost:6379"));
+        {
+            var redis = configuration["Redis:Configuration"]
+                ?? configuration.GetConnectionString("Redis")
+                ?? "localhost:6379";
+            return ConnectionMultiplexer.Connect(redis);
+        });
 
         services.AddSingleton<IRedisCacheService, RedisCacheService>();
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
+        services.AddScoped<IPricingService, PricingService>();
         services.AddHttpContextAccessor();
         services.AddExceptionHandler<GlobalExceptionHandler>();
         services.AddProblemDetails();
@@ -111,14 +118,18 @@ public static class NovacartServiceExtensions
         return services;
     }
 
-    public static IServiceCollection AddNovacartProduct(this IServiceCollection services)
+    public static IServiceCollection AddNovacartProduct(this IServiceCollection services, IConfiguration configuration)
     {
+        services.AddNovacartElasticsearch(configuration);
+        services.Configure<StockHoldOptions>(configuration.GetSection(StockHoldOptions.SectionName));
         services.AddSingleton<IRedisDistributedLockService, RedisDistributedLockService>();
+        services.AddScoped<IProductStockRepository, ProductStockRepository>();
+        services.AddScoped<IStockHoldService, StockHoldService>();
         services.AddScoped<IStockReservationService, StockReservationService>();
+        services.AddHostedService<StockHoldExpiryHostedService>();
         services.AddScoped<IProductService, Novacart.Api.Services.ProductService>();
         services.AddScoped<IAdminProductService, AdminProductService>();
         services.AddScoped<IPriceRuleService, PriceRuleService>();
-        services.AddScoped<IPricingService, PricingService>();
         services.AddScoped<IAnalyticsService, AnalyticsService>();
         services.AddScoped<ISquareCatalogueGateway, SquareCatalogueGateway>();
         services.AddScoped<ISquareCatalogueService, SquareCatalogueService>();
@@ -150,6 +161,7 @@ public static class NovacartServiceExtensions
         services.AddSingleton<EmailQueue>();
         services.AddSingleton<IEmailQueue>(sp => sp.GetRequiredService<EmailQueue>());
         services.AddHostedService<EmailBackgroundWorker>();
+        services.AddScoped<IStockHoldGateway, LocalStockHoldGateway>();
         return services;
     }
 
@@ -167,6 +179,7 @@ public static class NovacartServiceExtensions
         services.AddScoped<IPaymentStrategyFactory, PaymentStrategyFactory>();
         services.AddScoped<IEmailService, EmailService>();
         services.AddNovacartCatalogSupport(configuration);
+        services.AddNovacartStockHoldGateway(configuration);
         services.AddScoped<IOrderCheckoutCompletionService, OrderCheckoutCompletionService>();
         services.AddScoped<IEmailQueue, MassTransitEmailQueue>();
         services.AddNovacartRabbitMqMonitoring();

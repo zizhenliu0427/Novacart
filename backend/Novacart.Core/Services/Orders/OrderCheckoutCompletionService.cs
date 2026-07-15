@@ -4,6 +4,7 @@ using Novacart.Api.Data;
 using Novacart.Api.Models.Entities;
 using Novacart.Api.Services;
 using Novacart.Api.Services.Payments;
+using Novacart.Api.Services.Stock;
 
 namespace Novacart.Api.Services.Orders;
 
@@ -22,6 +23,7 @@ public class OrderCheckoutCompletionService(
     AppDbContext db,
     IRedisCacheService cache,
     IStripeRefundService refundService,
+    IStockHoldGateway stockHold,
     ILogger<OrderCheckoutCompletionService> logger) : IOrderCheckoutCompletionService
 {
     public async Task<OrderCheckoutCompletionResult?> TryMarkPaidAsync(
@@ -89,6 +91,7 @@ public class OrderCheckoutCompletionService(
         }
 
         await db.SaveChangesAsync(cancellationToken);
+        await stockHold.ReleaseForOrderAsync(orderId, cancellationToken);
         logger.LogWarning(
             "Order {OrderId} cancelled after stock failure: {Reason}",
             orderId,

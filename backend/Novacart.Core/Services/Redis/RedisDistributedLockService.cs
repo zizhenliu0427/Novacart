@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using Novacart.Api.Services.Stock;
 using StackExchange.Redis;
 
 namespace Novacart.Api.Services;
@@ -46,17 +48,22 @@ public sealed class RedisDistributedLockService(IConnectionMultiplexer mux) : IR
     {
         var token = Guid.NewGuid().ToString("N");
         var deadline = DateTime.UtcNow + wait;
+        var sw = Stopwatch.StartNew();
 
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             if (await _db.StringSetAsync(key, token, expiry, When.NotExists))
+            {
+                StockInventoryMetrics.LockWaitMs.Record(sw.Elapsed.TotalMilliseconds);
                 return new RedisLockHandle(_db, key, token);
+            }
 
             await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
         }
 
+        StockInventoryMetrics.LockWaitMs.Record(sw.Elapsed.TotalMilliseconds);
         return null;
     }
 

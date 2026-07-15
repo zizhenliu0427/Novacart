@@ -14,7 +14,22 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Http;
 using Novacart.Api.Services.Catalog;
 
+using Novacart.Api.Models.Dtos.Stock;
+using Novacart.Api.Services.Stock;
+
 namespace Novacart.Api.Tests;
+
+public class FakeStockHoldGateway : IStockHoldGateway
+{
+    public Task<StockHoldGatewayResult> TryHoldForOrderAsync(
+        Guid orderId,
+        IReadOnlyList<StockHoldLine> lines,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new StockHoldGatewayResult(true));
+
+    public Task ReleaseForOrderAsync(Guid orderId, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
+}
 
 /// <summary>
 /// Stub of IPaymentStrategy to avoid network dependency on Stripe.
@@ -67,7 +82,7 @@ public class PaymentServiceTests
         var paymentSvc = new PaymentService(
             db, _strategyFactory, _orderFactory, new PricingService(), new NullRedisCacheService(), _config,
             new FakeEmailQueue(), NullLogger<PaymentService>.Instance, _services,
-            new DbProductCatalogStoreAdapter(db), new HttpContextAccessor());
+            new DbProductCatalogStoreAdapter(db), new FakeStockHoldGateway(), new HttpContextAccessor());
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
@@ -119,7 +134,7 @@ public class PaymentServiceTests
         var paymentSvc = new PaymentService(
             db, _strategyFactory, _orderFactory, new PricingService(), new NullRedisCacheService(), _config,
             new FakeEmailQueue(), NullLogger<PaymentService>.Instance, _services,
-            new DbProductCatalogStoreAdapter(db), new HttpContextAccessor());
+            new DbProductCatalogStoreAdapter(db), new FakeStockHoldGateway(), new HttpContextAccessor());
         var userId = await TestDbFactory.SeedTestUserAsync(db);
 
         var addressId = await SeedAddressAsync(db, userId);
@@ -138,7 +153,7 @@ public class PaymentServiceTests
         var paymentSvc = new PaymentService(
             db, _strategyFactory, _orderFactory, new PricingService(), new NullRedisCacheService(), _config,
             new FakeEmailQueue(), NullLogger<PaymentService>.Instance, _services,
-            new DbProductCatalogStoreAdapter(db), new HttpContextAccessor());
+            new DbProductCatalogStoreAdapter(db), new FakeStockHoldGateway(), new HttpContextAccessor());
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
@@ -189,7 +204,7 @@ public class PaymentServiceTests
         var paymentSvc = new PaymentService(
             db, _strategyFactory, _orderFactory, new PricingService(), new NullRedisCacheService(), _config,
             new FakeEmailQueue(), NullLogger<PaymentService>.Instance, _services,
-            new DbProductCatalogStoreAdapter(db), new HttpContextAccessor());
+            new DbProductCatalogStoreAdapter(db), new FakeStockHoldGateway(), new HttpContextAccessor());
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);

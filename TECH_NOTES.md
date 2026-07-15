@@ -920,6 +920,143 @@ The single biggest lesson from this session: **130/130 unit tests passing did no
 
 **Takeaway:** For features involving external systems (S3, SMTP, webhooks, payment gateways), a green unit-test suite is necessary but not sufficient. Always do at least one end-to-end round-trip (presign → PUT → GET) against a real (or LocalStack-emulated) service before declaring "done."
 
+### 2026-07-16: PE-1 through PE-4 — Microservices, ElasticSearch, Distributed Lock
+
+> Record of the **Planned Enhancements** rollout: tech stacks used, mistakes made during implementation, and fixes. Canonical task lists: [TODO.md](TODO.md), [HANDOFF.md §11](HANDOFF.md#11-planned-enhancements-scaling-tail--not-scheduled). Design docs: [docs/MICROSERVICES-PE1.md](docs/MICROSERVICES-PE1.md), [docs/PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md).
+
+#### Tech stack overview (PE-1 ~ PE-4)
+
+| PE | Scope | Stack |
+|---|---|---|
+| **PE-1** | Microservices (default `docker compose up`) | **.NET Aspire** AppHost · **YARP** gateway · **Polly** + **Refit** · **MassTransit** + **RabbitMQ** · **Transactional Outbox** · **MassTransit Saga** · 4 logical DBs (auth / product / cart / order) · **OpenTelemetry** + **Jaeger** · K8s skeleton |
+| **PE-2** | Async messaging | Folded into PE-1 — MassTransit transport replaces in-process `EmailQueue` at scale |
+| **PE-5** | Async checkout | Folded into PE-1 — `OrderCheckoutStateMachine` (payment → stock → email → clear cart) |
+| **PE-3** | Full-text search | **Elasticsearch 8.15** · `Elastic.Clients.Elasticsearch` · Product API only; Postgres `ILIKE` fallback |
+| **PE-4 baseline** | Inventory lock | **Redis 7** · Redlock-style `RedisDistributedLockService` · `StockReservationService` on `ReserveStockConsumer` · Testcontainers concurrency test |
+
+#### 0. Process & verification mistakes (cross-cutting)
+
+| Mistake | Tech / context | Fix / lesson |
+|---|---|---|
+| **Committed on user's behalf** without explicit request | Git workflow | Only commit when the user asks. Use `git reset HEAD~1` to undo while keeping changes. |
+| **Skipped Docker verification** citing "no local .NET 8 runtime" | HANDOFF §2 | The project standard is `docker compose down && docker compose up --build -d` + `db-migrate` + smoke tests — not host `dotnet run`. |
+| **Misread exit code 139** as SIGSEGV / native crash | .NET in Linux containers | Read container logs first. In this project, 139 was **unhandled startup exceptions** (EF model + DI), not a segfault. |
+| **Stale Docker images** after code fixes | Docker layer cache | After EF/DI fixes, `docker compose up --build -d` (or rebuild affected services). Old `auth-api` image still lacked saga PK config. |
+
+#### 1. PE-1 / PE-2 / PE-5 — Microservices, messaging, saga
+
+**What was done:** Monolith split into Auth / Product / Cart / Order behind YARP; checkout orchestrated via MassTransit Saga + Outbox; email via MassTransit consumer in Order service; database-per-service (4 logical PostgreSQL databases).
+
+**Pitfalls hit:**
+
+| Pitfall | Cause | Solution |
+|---|---|---|
+| **`db-migrate` fails** with multiple DbContexts | EF Core `dotnet ef database update` without `--context` tries all contexts | `migrate-databases.sh`: `--context AppDbContext` + `AppDbContextFactory` for design-time |
+| **Saga persistence error** — `OrderCheckoutState` has no primary key | MassTransit EF saga entity not configured | `AppDbContext`: `modelBuilder.Entity<OrderCheckoutState>().HasKey(x => x.CorrelationId)` |
+| **Migrate startup project validation fails** | Using `Order.Api` as startup triggered `ValidateOnBuild` for all registered services | Migrate container uses **Core + ServiceDefaults only**; no full API startup |
+| **`cart-api` / `order-api` crash at startup** — `Unable to resolve IPricingService` | `IPricingService` registered in `AddNovacartProduct()` only; Cart/Order call `AddNovacartInfrastructure()` | Register `IPricingService` in **shared infrastructure** (`NovacartServiceExtensions`) |
+| **`Dockerfile.migrate` build fails** | Missing project reference copy | Copy `Novacart.ServiceDefaults` into migrate image |
+| **Windows host port conflicts** on 9200 / 16686 | Local Elasticsearch or Jaeger already bound | Remove **host port mappings** for ES and Jaeger in `docker-compose.yml`; inter-container DNS only (`elasticsearch:9200`) |
+| **Orphan monolith container** still running | Old `novacart-backend-1` from pre-split compose | `docker compose down --remove-orphans` |
+
+**Lessons learned:**
+- **Shared DI must live in shared extensions.** Anything Cart/Order needs (pricing, locks, outbox helpers) belongs in `AddNovacartInfrastructure`, not a single-service extension.
+- **Saga entities need explicit EF keys** — MassTransit won't infer `CorrelationId` as PK.
+- **Migration tooling should be minimal** — a dedicated migrate image avoids pulling entire service graphs into design-time validation.
+- **PE-2 and PE-5 are not separate milestones** — track them under PE-1; RabbitMQ + Saga + Outbox ship together.
+- **Verify the full compose stack**, not unit tests alone, after cross-service DI or EF model changes.
+
+#### 2. PE-3 — ElasticSearch product search
+
+**Stack:** Elasticsearch 8.15 · `Elastic.Clients.Elasticsearch` 8.15 · index `novacart-products` · Product API · optional `searchEngine` field on `PagedResult`.
+
+**What was done:** Keyword search (`?q=`) routes to ES when healthy; admin/Square changes trigger index sync; startup reindex; automatic Postgres fallback.
+
+**Pitfalls hit:**
+
+| Pitfall | Cause | Solution |
+|---|---|---|
+| **C# client compile errors** | ES 8.x client API differs from legacy NEST | Use `Elastic.Clients.Elasticsearch`: `.Term(new TermsQueryField(...))`, `NumberRange`, union types for `.Match()` |
+| **Indexer + DbContext lifetime** | Singleton indexer holding scoped `DbContext` | Register `ElasticProductSearchIndexer` as **Scoped** (or resolve via scope factory) |
+| **InMemory EF can't test ILIKE fallback** | InMemory provider doesn't implement Postgres `ILIKE` | Test ES path with Testcontainers; test fallback in integration/Docker tests, not InMemory |
+| **Testcontainers inside test Docker image** | Nested Docker / no socket | Lazy-init container; skip test when Docker unavailable (`DockerUnavailableException`) |
+| **Assumed ES needs host port 9200** | Dev machines often already use 9200 | ES only on Docker network; gateway/product-api reach `http://elasticsearch:9200` internally |
+
+**Lessons learned:**
+- **Browse (no `q`) stays on Postgres** — ES is for keyword relevance; facets/sort unchanged on PG.
+- **Always implement fallback** — set `searchEngine: "postgres"` so operators can see which path ran.
+- **Read the new client docs** — `Elastic.Clients.Elasticsearch` is not a drop-in for NEST.
+- See [docs/PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md) for config and sync table.
+
+#### 3. PE-4 — Distributed lock & inventory (baseline + production gap)
+
+**Stack:** Redis 7 · `RedisDistributedLockService` (Redlock-style, single master in dev) · `StockReservationService` in Product `ReserveStockConsumer` · `StockReservationConcurrencyTests` (50 concurrent tasks, 5 stock, Testcontainers Redis).
+
+**What was done (baseline):** Lock around stock deduction in the saga consumer; concurrency integration test proves no oversell under parallel `TryReserveAsync`.
+
+**Pitfalls / misconceptions:**
+
+| Pitfall | Cause | Solution / target |
+|---|---|---|
+| **Fake lock in unit tests always succeeds** | Test double doesn't simulate contention | Real concurrency coverage requires **Testcontainers Redis** (or similar), not mocks |
+| **"Redis lock = production-ready inventory"** | Lock alone doesn't cover reservation, flash-sale, or DB races | PE-4 **hardening** still open: PaymentIntent TTL reservation, `UPDATE … WHERE stock >= qty`, YARP rate limit, Redis Sentinel/Cluster, stock/lock metrics |
+| **Confused PE-6 with PE-4** | Redis cart cache vs stock lock | **PE-6** optimises cart reads; **PE-4** protects inventory writes — separate concerns |
+
+**Spring Cloud large mall — full stack reference**
+
+Large Spring Cloud e-commerce sites rarely add **only** a Redis lock. They stack multiple layers:
+
+| Capability | Typical Spring ecosystem | Novacart today |
+|---|---|---|
+| **Microservice split** | Spring Boot multi-service | ✅ PE-1 |
+| **API gateway** | Spring Cloud Gateway | ✅ YARP |
+| **Service discovery** | Nacos / Eureka | ✅ Aspire / K8s |
+| **Sync call resilience** | OpenFeign + Sentinel | ✅ Refit + Polly |
+| **Async checkout** | Spring Cloud Stream + Saga | ✅ MassTransit Saga |
+| **Reliable messaging** | Outbox pattern | ✅ MassTransit Outbox |
+| **Stock deduction lock** | Redisson | ✅ Redlock baseline |
+| **Stock reservation (hold)** | Redis / DB hold + TTL | ❌ → PE-4 hardening |
+| **DB conditional update** | MyBatis optimistic / `UPDATE … WHERE stock >=` | ❌ → PE-4 hardening |
+| **Flash-sale rate limit** | Sentinel + MQ peak shaving | ❌ → PE-4 hardening |
+| **Search** | Elasticsearch | ✅ PE-3 |
+| **Shopping cart** | Redis | Postgres today → **PE-6** |
+| **Distributed tracing** | Sleuth / Zipkin | ✅ OpenTelemetry + Jaeger |
+| **Distributed transactions (Seata)** | 2PC | ❌ intentionally — **Saga is the common choice** (no 2PC across services) |
+
+**Production layers to add (priority order):**
+
+1. **Stock reservation** — hold inventory when order / PaymentIntent is created; release on timeout (TTL).
+2. **Atomic DB decrement** — single statement, no race between read and write:
+   ```sql
+   UPDATE products SET stock = stock - @q
+   WHERE id = @id AND stock >= @q;
+   ```
+3. **Rate limiting / queuing** — gateway or dedicated flash-sale queue to protect Redis and DB under burst traffic.
+4. **Redis high availability** — Sentinel or Cluster; true Redlock needs multi-master quorum.
+5. **PE-6 Redis cart** — **different problem** (fast reads, cross-device sync); does **not** replace stock lock or reservation.
+6. **Observability** — lock wait time, `LockNotAcquired` count, stock mismatch alerts.
+
+**Novacart-specific answers:**
+
+| Question | Answer |
+|---|---|
+| Is **only** a Redis lock enough? | **No** — it is one layer in the inventory concurrency story, not the whole story. |
+| Enough for **current Novacart stage**? | **Yes** — microservices + Saga + idempotency + Redis lock already cover *deduct stock after payment succeeds without overselling across replicas*. |
+| Ready for **real flash sale / mega promo**? | **Not yet** — still need reservation, conditional DB update, rate limiting, and HA Redis. PE-6 optimises the cart, not inventory locking. |
+
+**Takeaway:** Novacart baseline (PE-1 + PE-3 + PE-4 lock + Saga) matches a solid mid-tier stack. Closing the gap to typical Spring mall production practice is tracked in [TODO.md § PE-4](TODO.md#pe-4--distributed-lock--inventory-hardening-redis) (reservation, atomic SQL, rate limit, Redis HA, metrics) and [PE-6](TODO.md) (cart cache).
+
+#### 4. What "tests pass" still didn't prove (PE-1 ~ PE-4)
+
+Same theme as the S3 session:
+
+- **Unit tests green** did not catch Cart/Order startup DI failures — only **full compose up** did.
+- **InMemory EF tests** did not validate Postgres `ILIKE` fallback or real ES queries.
+- **Mock locks** did not prove concurrency — **Testcontainers Redis** did.
+- **HANDOFF smoke** (`GET /api/products?q=…` → `searchEngine: "elasticsearch"`) is the acceptance bar for PE-3.
+
+**Rule of thumb:** After any PE touching **multiple containers**, **external infra** (ES, Redis, RabbitMQ), or **shared DI**, run `docker compose up --build -d`, check `db-migrate` exit 0, then hit the gateway — not just `dotnet test` on the host.
+
 ---
 > **⚠️ IMPORTANT: Always read the official documentation before using any technology.**
 
