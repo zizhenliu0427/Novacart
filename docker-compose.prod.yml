@@ -1,47 +1,89 @@
-# Production override — no embedded DB/Redis (use external RDS/ElastiCache).
-# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Production override — external RDS/ElastiCache/RabbitMQ; no embedded infra.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Required env (see .env.prod.example):
+#   DB_AUTH_CONNECTION_STRING, DB_PRODUCT_CONNECTION_STRING,
+#   DB_COMMERCE_CONNECTION_STRING, DB_CART_CONNECTION_STRING,
+#   REDIS_CONNECTION_STRING, RABBITMQ_CONNECTION_STRING, JWT_SECRET, ...
+
+x-prod-common: &prod-common
+  ASPNETCORE_ENVIRONMENT: Production
+  ConnectionStrings__Redis: ${REDIS_CONNECTION_STRING}
+  Jwt__Secret: ${JWT_SECRET}
+  Jwt__Issuer: ${JWT_ISSUER:-novacart}
+  Jwt__Audience: ${JWT_AUDIENCE:-novacart}
+  Microservices__IsolatedDatabases: "true"
+  Microservices__UseRefitCatalog: "true"
+  Services__product-api__http__0: http://product-api:8080
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+  restart: unless-stopped
 
 services:
-  backend:
+  db-migrate:
     environment:
-      - ASPNETCORE_ENVIRONMENT=Production
-      - ConnectionStrings__DefaultConnection=${DB_CONNECTION_STRING}
-      - ConnectionStrings__Redis=${REDIS_CONNECTION_STRING}
-      - Jwt__Secret=${JWT_SECRET}
-      - Jwt__Issuer=${JWT_ISSUER:-novacart}
-      - Jwt__Audience=${JWT_AUDIENCE:-novacart}
-      - Stripe__SecretKey=${STRIPE_SECRET_KEY}
-      - Stripe__WebhookSecret=${STRIPE_WEBHOOK_SECRET}
-      - Square__AccessToken=${SQUARE_ACCESS_TOKEN}
-      - Square__Environment=${SQUARE_ENVIRONMENT:-sandbox}
-      - Smtp__Host=${SMTP_HOST}
-      - Smtp__Port=${SMTP_PORT:-587}
-      - Smtp__Username=${SMTP_USERNAME}
-      - Smtp__Password=${SMTP_PASSWORD}
-      - Smtp__FromAddress=${SMTP_FROM_ADDRESS:-noreply@novacart.com}
-      - Smtp__FromName=${SMTP_FROM_NAME:-Novacart}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+    depends_on: []
+
+  auth-api:
+    environment:
+      <<: *prod-common
+      ConnectionStrings__DefaultConnection: ${DB_AUTH_CONNECTION_STRING}
+      OTEL_SERVICE_NAME: auth-api
+
+  product-api:
+    environment:
+      <<: *prod-common
+      ConnectionStrings__DefaultConnection: ${DB_PRODUCT_CONNECTION_STRING}
+      ConnectionStrings__RabbitMQ: ${RABBITMQ_CONNECTION_STRING}
+      OTEL_SERVICE_NAME: product-api
+      Aws__S3__Bucket: ${AWS_S3_BUCKET}
+      Aws__S3__Region: ${AWS_S3_REGION:-us-east-1}
+      Aws__S3__AccessKey: ${AWS_ACCESS_KEY_ID}
+      Aws__S3__SecretKey: ${AWS_SECRET_ACCESS_KEY}
+      Aws__S3__PublicBaseUrl: ${AWS_S3_PUBLIC_BASE_URL}
+
+  cart-api:
+    environment:
+      <<: *prod-common
+      ConnectionStrings__DefaultConnection: ${DB_CART_CONNECTION_STRING}
+      ConnectionStrings__RabbitMQ: ${RABBITMQ_CONNECTION_STRING}
+      OTEL_SERVICE_NAME: cart-api
+
+  order-api:
+    environment:
+      <<: *prod-common
+      ConnectionStrings__DefaultConnection: ${DB_COMMERCE_CONNECTION_STRING}
+      ConnectionStrings__RabbitMQ: ${RABBITMQ_CONNECTION_STRING}
+      RabbitMQ__ManagementUrl: ${RABBITMQ_MANAGEMENT_URL}
+      RabbitMQ__Username: ${RABBITMQ_USERNAME:-guest}
+      RabbitMQ__Password: ${RABBITMQ_PASSWORD}
+      OTEL_SERVICE_NAME: order-api
+      Stripe__SecretKey: ${STRIPE_SECRET_KEY}
+      Stripe__WebhookSecret: ${STRIPE_WEBHOOK_SECRET}
+
+  gateway:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_SERVICE_NAME: gateway
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:5000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
-    depends_on: []   # override dev deps on postgres/redis containers
+    depends_on: []
 
   frontend:
     environment:
-      - NODE_ENV=production
+      NODE_ENV: production
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
-  # Remove embedded postgres and redis for production —
-  # use managed services (RDS, ElastiCache) instead.
   postgres:
-    profiles: ["dev-only"]
+    profiles: [dev-only]
   redis:
-    profiles: ["dev-only"]
+    profiles: [dev-only]
+  rabbitmq:
+    profiles: [dev-only]
+  localstack:
+    profiles: [dev-only]
+  jaeger:
+    profiles: [dev-only]

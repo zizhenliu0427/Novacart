@@ -1,4 +1,5 @@
 import { clearToken } from './auth';
+import { localeFromPathname } from './locale';
 
 const API_BASE = '/api';
 
@@ -58,7 +59,8 @@ async function tryRefresh(): Promise<boolean> {
 function bailToLogin(): never {
   if (typeof window !== 'undefined') {
     clearToken();
-    window.location.href = '/login';
+    const locale = localeFromPathname(window.location.pathname);
+    window.location.href = `/${locale}/login`;
   }
   throw new Error('Authentication failed');
 }

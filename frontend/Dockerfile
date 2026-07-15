@@ -2,6 +2,10 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 
+# Baked into next.config rewrites at build time (see next.config.mjs).
+ARG BACKEND_ORIGIN=http://gateway:8080
+ENV BACKEND_ORIGIN=${BACKEND_ORIGIN}
+
 COPY package.json package-lock.json* ./
 RUN npm install
 

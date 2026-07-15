@@ -1,5 +1,36 @@
+# Novacart — default stack: microservices (YARP gateway + Auth/Product/Cart/Order + RabbitMQ).
+# One command:  docker compose up --build -d
+# Legacy monolith: docker compose -f docker-compose.monolith.yml up --build -d
+
+x-api-common: &api-common
+  ASPNETCORE_ENVIRONMENT: Development
+  ASPNETCORE_URLS: http://+:8080
+  ConnectionStrings__Redis: redis:6379
+  Jwt__Secret: your-super-secret-key-change-in-production-at-least-32-chars
+  Jwt__Issuer: novacart
+  Jwt__Audience: novacart
+  Cors__AllowedOrigin: http://localhost:3000
+  Microservices__IsolatedDatabases: "true"
+  Microservices__UseRefitCatalog: "true"
+  Services__product-api__http__0: http://product-api:8080
+
+x-otel: &otel
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+  OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+
+x-db-auth: &db-auth
+  ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=novacart_auth;Username=postgres;Password=postgres
+
+x-db-product: &db-product
+  ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=novacart_product;Username=postgres;Password=postgres
+
+x-db-commerce: &db-commerce
+  ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=novacart_commerce;Username=postgres;Password=postgres
+
+x-db-cart: &db-cart
+  ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=novacart_cart;Username=postgres;Password=postgres
+
 services:
-  # ── PostgreSQL ──────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     environment:
@@ -10,13 +41,13 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # ── Redis ───────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     ports:
@@ -29,56 +60,163 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── LocalStack (S3-compatible, dev/test only) ───────────
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
   localstack:
     image: localstack/localstack:3.0
     ports:
       - "4566:4566"
     environment:
-      - SERVICES=s3
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
-      - AWS_DEFAULT_REGION=us-east-1
+      SERVICES: s3
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
     volumes:
       - localstack_data:/var/lib/localstack
       - ./localstack/init-s3-bucket.sh:/etc/localstack/init/ready.d/init-s3-bucket.sh:ro
 
-  # ── Backend (ASP.NET Core) ──────────────────────────────
-  backend:
+  db-migrate:
     build:
       context: ./backend
-      dockerfile: Dockerfile
-    ports:
-      - "5000:5000"
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=novacart;Username=postgres;Password=postgres
-      - ConnectionStrings__Redis=redis:6379
-      - Aws__S3__Bucket=novacart-product-images
-      - Aws__S3__ServiceUrl=http://localstack:4566
-      - Aws__S3__Region=us-east-1
-      - Aws__S3__AccessKey=test
-      - Aws__S3__SecretKey=test
-      - Aws__S3__ForcePathStyle=true
+      dockerfile: Dockerfile.migrate
     depends_on:
       postgres:
         condition: service_healthy
+    restart: "no"
+
+  auth-api:
+    build:
+      context: ./backend
+      dockerfile: Services/Novacart.Auth.Api/Dockerfile
+    environment:
+      <<: [*api-common, *db-auth, *otel]
+      OTEL_SERVICE_NAME: auth-api
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  product-api:
+    build:
+      context: ./backend
+      dockerfile: Services/Novacart.Product.Api/Dockerfile
+    environment:
+      <<: [*api-common, *db-product, *otel]
+      OTEL_SERVICE_NAME: product-api
+      ConnectionStrings__RabbitMQ: amqp://guest:guest@rabbitmq:5672
+      Aws__S3__Bucket: novacart-product-images
+      Aws__S3__ServiceUrl: http://localstack:4566
+      Aws__S3__Region: us-east-1
+      Aws__S3__AccessKey: test
+      Aws__S3__SecretKey: test
+      Aws__S3__ForcePathStyle: "true"
+      Aws__S3__PublicBaseUrl: http://localhost:4566/novacart-product-images
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       localstack:
         condition: service_started
+      rabbitmq:
+        condition: service_healthy
 
-  # ── Frontend (Next.js) ─────────────────────────────────
+  cart-api:
+    build:
+      context: ./backend
+      dockerfile: Services/Novacart.Cart.Api/Dockerfile
+    environment:
+      <<: [*api-common, *db-cart, *otel]
+      OTEL_SERVICE_NAME: cart-api
+      ConnectionStrings__ProductRead: Host=postgres;Port=5432;Database=novacart_product;Username=postgres;Password=postgres
+      ConnectionStrings__RabbitMQ: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  order-api:
+    build:
+      context: ./backend
+      dockerfile: Services/Novacart.Order.Api/Dockerfile
+    environment:
+      <<: [*api-common, *db-commerce, *otel]
+      OTEL_SERVICE_NAME: order-api
+      ConnectionStrings__ProductRead: Host=postgres;Port=5432;Database=novacart_product;Username=postgres;Password=postgres
+      ConnectionStrings__RabbitMQ: amqp://guest:guest@rabbitmq:5672
+      RabbitMQ__ManagementUrl: http://rabbitmq:15672
+      RabbitMQ__Username: guest
+      RabbitMQ__Password: guest
+      Stripe__SecretKey: sk_test_placeholder
+      Stripe__PublishableKey: pk_test_placeholder
+      Stripe__WebhookSecret: whsec_placeholder
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  gateway:
+    build:
+      context: ./backend
+      dockerfile: Novacart.Gateway/Dockerfile
+    ports:
+      - "5000:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      <<: *otel
+      OTEL_SERVICE_NAME: gateway
+      ReverseProxy__Clusters__auth-cluster__Destinations__auth__Address: http://auth-api:8080
+      ReverseProxy__Clusters__product-cluster__Destinations__product__Address: http://product-api:8080
+      ReverseProxy__Clusters__cart-cluster__Destinations__cart__Address: http://cart-api:8080
+      ReverseProxy__Clusters__order-cluster__Destinations__order__Address: http://order-api:8080
+    depends_on:
+      auth-api:
+        condition: service_started
+      product-api:
+        condition: service_started
+      cart-api:
+        condition: service_started
+      order-api:
+        condition: service_started
+
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        BACKEND_ORIGIN: http://gateway:8080
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=production
+      NODE_ENV: production
     depends_on:
-      - backend
+      gateway:
+        condition: service_started
 
 volumes:
   postgres_data:

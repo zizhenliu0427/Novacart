@@ -1,0 +1,288 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: novacart
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate
+  namespace: novacart
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: novacart/db-migrate:latest
+          envFrom:
+            - secretRef:
+                name: novacart-db-migrate
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: novacart
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+    spec:
+      containers:
+        - name: gateway
+          image: novacart/gateway:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ReverseProxy__Clusters__auth-cluster__Destinations__auth__Address
+              value: http://auth-api:8080
+            - name: ReverseProxy__Clusters__product-cluster__Destinations__product__Address
+              value: http://product-api:8080
+            - name: ReverseProxy__Clusters__cart-cluster__Destinations__cart__Address
+              value: http://cart-api:8080
+            - name: ReverseProxy__Clusters__order-cluster__Destinations__order__Address
+              value: http://order-api:8080
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: novacart-otel
+                  key: OTEL_EXPORTER_OTLP_ENDPOINT
+                  optional: true
+            - name: OTEL_SERVICE_NAME
+              value: gateway
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /alive
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  namespace: novacart
+spec:
+  selector:
+    app: gateway
+  ports:
+    - port: 80
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-api
+  namespace: novacart
+spec:
+  selector:
+    app: auth-api
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: product-api
+  namespace: novacart
+spec:
+  selector:
+    app: product-api
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cart-api
+  namespace: novacart
+spec:
+  selector:
+    app: cart-api
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-api
+  namespace: novacart
+spec:
+  selector:
+    app: order-api
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-api
+  namespace: novacart
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-api
+  template:
+    metadata:
+      labels:
+        app: auth-api
+    spec:
+      containers:
+        - name: auth-api
+          image: novacart/auth-api:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: novacart-db-auth
+            - secretRef:
+                name: novacart-redis
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: auth-api
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-api
+  namespace: novacart
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: product-api
+  template:
+    metadata:
+      labels:
+        app: product-api
+    spec:
+      containers:
+        - name: product-api
+          image: novacart/product-api:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: novacart-db-product
+            - secretRef:
+                name: novacart-redis
+            - secretRef:
+                name: novacart-rabbitmq
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: product-api
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cart-api
+  namespace: novacart
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cart-api
+  template:
+    metadata:
+      labels:
+        app: cart-api
+    spec:
+      containers:
+        - name: cart-api
+          image: novacart/cart-api:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: novacart-db-cart
+            - secretRef:
+                name: novacart-redis
+            - secretRef:
+                name: novacart-rabbitmq
+          env:
+            - name: Microservices__IsolatedDatabases
+              value: "true"
+            - name: Microservices__UseRefitCatalog
+              value: "true"
+            - name: Services__product-api__http__0
+              value: http://product-api:8080
+            - name: OTEL_SERVICE_NAME
+              value: cart-api
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-api
+  namespace: novacart
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: order-api
+  template:
+    metadata:
+      labels:
+        app: order-api
+    spec:
+      containers:
+        - name: order-api
+          image: novacart/order-api:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: novacart-db-commerce
+            - secretRef:
+                name: novacart-redis
+            - secretRef:
+                name: novacart-rabbitmq
+          env:
+            - name: Microservices__IsolatedDatabases
+              value: "true"
+            - name: Microservices__UseRefitCatalog
+              value: "true"
+            - name: Services__product-api__http__0
+              value: http://product-api:8080
+            - name: OTEL_SERVICE_NAME
+              value: order-api
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10

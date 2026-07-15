@@ -1,0 +1,16 @@
+# Runs EF Core migrations for each service database (Phase 5 database-per-service).
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+COPY Novacart.Core/ Novacart.Core/
+COPY Novacart.ServiceDefaults/ Novacart.ServiceDefaults/
+COPY Services/Novacart.Order.Api/ Services/Novacart.Order.Api/
+COPY scripts/migrate-databases.sh scripts/migrate-databases.sh
+
+RUN dotnet restore Services/Novacart.Order.Api/Novacart.Order.Api.csproj
+RUN dotnet tool install --global dotnet-ef --version 8.0.11
+ENV PATH="/root/.dotnet/tools:${PATH}"
+
+RUN chmod +x scripts/migrate-databases.sh
+
+ENTRYPOINT ["scripts/migrate-databases.sh"]

@@ -1,0 +1,212 @@
+# Novacart — TODO (Planned Enhancements)
+
+> **Scope:** Future scaling features from [README §Planned Enhancements](README.md#planned-enhancements).
+> Detailed context, triggers, and dependency notes: [HANDOFF.md §11](HANDOFF.md#11-planned-enhancements-scaling-tail--not-scheduled).
+>
+> **P1, P2, P3, and P14 are complete.** Nothing in this file is required for the current release.
+> Legend: `[ ]` not started · `[~]` in progress · `[x]` done
+
+---
+
+## PE-1 — Microservices (final architecture)
+
+**Canonical design:** [docs/MICROSERVICES-PE1.md](docs/MICROSERVICES-PE1.md) · [中文版](docs/MICROSERVICES-PE1_ZH.md)
+
+**Stack:** .NET **Aspire** + **YARP** + **Polly** + **MassTransit** + **RabbitMQ** + **Transactional Outbox** + **MassTransit Saga**. Services: Auth, Product, Cart, Order (database-per-service target). **PE-2** and **PE-5** are implemented **inside** this rollout, not as separate tracks.
+
+**Trigger:** Multiple teams need independent deploys, uneven scaling across domains, or in-process `EmailQueue` is insufficient across replicas.
+
+**Phase status (2026-07-16):** **PE-1 sealed** — microservices default stack; logical 4-DB isolation documented; Stripe refund compensation; saga harness + E2E smoke script.
+
+- [x] Document final topology and Spring Cloud comparison
+- [x] Add **Aspire AppHost** + **YARP gateway** + **RabbitMQ** to docker-compose / AppHost
+- [x] Identify service boundaries (Auth / Product / Cart / Order); **4 DBs** (`novacart_auth`, `novacart_product`, `novacart_commerce`, `novacart_cart`) in Docker
+- [x] **Order service:** MassTransit EF **Outbox** + `PaymentCompleted` (distributed webhook path)
+- [x] Implement **OrderCheckoutSaga** — **`OrderCheckoutStateMachine`** (EF persistence) replaces `StockReserved` / `StockReservationFailed` consumers
+- [x] Extract **Product** service + **`ReserveStockConsumer`** + **Redlock (PE-4)** on `StockReservationService`
+- [x] Extract **Cart** service + **`ClearCartForOrder` consumer**
+- [x] Extract **Auth** service
+- [x] Extract **Order** service (webhook, admin orders, saga host)
+- [x] Replace in-process **`EmailQueue`** with MassTransit **`SendOrderConfirmationConsumer`** + **`SendEmailConsumer`** (Order microservice; monolith retains `EmailBackgroundWorker` for legacy compose)
+- [x] **Polly** via ServiceDefaults; **Refit** catalog client + Aspire/K8s service discovery
+- [x] K8s deploy manifests (`k8s/microservices.yaml`, `k8s/ingress.yaml`, `k8s/secrets.example.yaml`, migrate Job, probes)
+- [x] DLQ alerting + OpenTelemetry (Jaeger OTLP `:16686`)
+- [x] **Phase 6:** Cart DB isolation; MassTransit retry; `GET /api/admin/system/messaging`
+- [x] **Phase 7:** MassTransit email queue; Testcontainers; admin DLQ UI
+- [x] **Phase 8:** Refit `IProductCatalogApi`; AppHost 4 DB + Jaeger; `docker-compose.prod.yml` 4 DB; gateway route tests
+- [x] **PE-1 seal:** Stripe refund compensation; `CheckoutSagaIntegrationTests`; `scripts/e2e-microservices-smoke.sh`; [DATABASE-PER-SERVICE.md](docs/DATABASE-PER-SERVICE.md)
+- [x] Split Docker Compose / prod into multi-service (+ Redis, RabbitMQ); default `docker-compose.yml` = microservices
+
+---
+
+## PE-2 — RabbitMQ
+
+> **Status:** Folded into **[PE-1 final architecture](#pe-1--microservices-final-architecture)**. Implement MassTransit + RabbitMQ as part of PE-1, not as a standalone milestone.
+
+**Purpose:** Async order processing, inventory updates, email notifications (durable, multi-instance).
+
+**Trigger:** (See PE-1.)
+
+- [x] *(Track under PE-1)* Add RabbitMQ to compose / Aspire AppHost
+- [x] *(Track under PE-1)* MassTransit publishers/consumers, idempotency, DLQ
+- [x] *(Track under PE-1)* Replace `EmailQueue` with MassTransit consumer (Order service)
+
+---
+
+## PE-2 legacy checklist (reference only)
+
+<details>
+<summary>Original PE-2 sub-tasks (all under PE-1 now)</summary>
+
+- [x] Add RabbitMQ to `docker-compose.yml` (and prod compose / managed broker)
+- [x] Define exchanges/queues: checkout events via MassTransit conventions
+- [x] Replace or complement `EmailQueue` with RabbitMQ publisher + consumer worker(s)
+- [x] Publish inventory-adjust events after payment webhook (Product consumer)
+- [x] Idempotent consumers (dedupe by order ID / pending status checks)
+- [x] Dead-letter queue + alerting on poison messages
+- [x] Integration tests with Testcontainers (RabbitMQ management probe; MassTransit email harness)
+
+</details>
+
+---
+
+## PE-3 — ElasticSearch
+
+**Purpose:** Full-text search for product catalogues (material, style, price).
+
+**Trigger:** Postgres ILIKE + tag/category facets fail on relevance, language, or latency at scale.
+
+- [ ] Add ElasticSearch (or OpenSearch) to dev/prod stack
+- [ ] Index pipeline: product create/update/delete → ES document sync (outbox or direct)
+- [ ] Search API: multi-match, filters (category, price range, tags, metadata fields)
+- [ ] Frontend: wire `/products` search to ES-backed endpoint (keep URL-driven facets)
+- [ ] Fallback to Postgres search if ES unavailable
+- [ ] Benchmark vs current `ProductService` ILIKE path
+
+---
+
+## PE-4 — Distributed Lock (Redis Redlock)
+
+> **Status:** Required **with PE-1** when Product/Order run as multiple replicas. Implement in Product stock consumer.
+
+**Purpose:** Atomic inventory deduction across multiple app instances.
+
+**Trigger:** PE-1 horizontal scaling; flash-sale oversell risk.
+
+- [x] *(Track under PE-1)* Redlock in Product `ReserveStockConsumer` / `StockReservationService`
+- [x] Lock key per `ProductId` with short TTL (`novacart:stock:lock:{productId}`, 30s expiry)
+- [ ] Load test concurrent checkout on low-stock SKU
+- [x] Document lock semantics in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+
+---
+
+## PE-5 — Async Order Processing
+
+> **Status:** Folded into **[PE-1 final architecture](#pe-1--microservices-final-architecture)** via **MassTransit Saga** + Outbox.
+
+**Purpose:** Decouple checkout (payment → inventory → email → clear cart).
+
+**Trigger:** (See PE-1.)
+
+- [x] *(Track under PE-1)* `OrderCheckoutSaga` / consumer choreography
+- [x] *(Track under PE-1)* Compensating actions on stock failure (`StockReservationFailed`)
+- [x] *(Track under PE-1)* Idempotency at each stage (`orderId`, pending status checks)
+- [ ] Admin visibility: failed saga / DLQ retry UI (optional)
+
+---
+
+## PE-5 legacy checklist (reference only)
+
+<details>
+<summary>Original PE-5 sub-tasks (all under PE-1 now)</summary>
+
+- [x] Define saga/choreography: `PaymentCompleted` → `ReserveInventory` → `SendConfirmation` → `ClearCart`
+- [x] Implement consumers for each step with compensating actions on failure
+- [x] Ensure idempotency at each stage (order ID as correlation key)
+- [ ] Admin visibility: failed step retry or manual intervention UI (optional)
+
+</details>
+
+---
+
+## PE-6 — Cart Optimisation (Redis-backed)
+
+**Purpose:** Sub-ms cart reads, cross-device sync, guest-to-user merge.
+
+**Trigger:** PostgreSQL cart path becomes hot or cross-device latency is unacceptable.
+
+- [ ] Cart storage model in Redis (hash or JSON per user/session key)
+- [ ] `CartService` read-through/write-through Redis with Postgres fallback or periodic sync
+- [ ] Preserve guest `SessionId` → `UserId` merge semantics from current P2 implementation
+- [ ] TTL/eviction policy for abandoned guest carts
+- [ ] Invalidate on checkout completion (already clears DB cart today)
+
+---
+
+## PE-7 — SQL Sharding
+
+**Purpose:** Horizontal partitioning of large tables by date or user ID.
+
+**Trigger:** Orders / order_status_history / payment_webhooks tables exceed single-node Postgres capacity.
+
+- [ ] Choose shard key (e.g. `UserId` hash or `CreatedAt` time range)
+- [ ] Pilot shard on `orders` + `order_items` (highest growth)
+- [ ] Routing layer in EF or raw SQL (shard resolver in service layer)
+- [ ] Migration plan for existing data; cross-shard admin queries (analytics) strategy
+- [ ] Update [docs/database-standards.md](docs/database-standards.md)
+
+---
+
+## PE-8 — Thread Pool Tuning
+
+**Purpose:** Custom thread pool for flash sales and bulk order processing.
+
+**Trigger:** Thread-pool starvation or tail latency under burst checkout / webhook load.
+
+- [ ] Profile checkout + webhook under load (dotnet-counters, Application Insights)
+- [ ] Configure `ThreadPool` min threads or dedicated `TaskScheduler` for hot paths
+- [ ] Optional: isolate webhook processing to dedicated worker process
+- [ ] Document tuned values per environment in deployment guide
+
+---
+
+## PE-9 — AI Chatbot (Low Priority)
+
+**Purpose:** Customer service bot via OpenAI API or Ollama (local LLM).
+
+**Trigger:** Product requirement for automated support (order status, shipping, returns FAQ).
+
+- [ ] Choose provider: OpenAI API vs self-hosted Ollama
+- [ ] Backend proxy endpoint (never expose API keys to browser)
+- [ ] Context injection: user's recent orders, product catalogue snippets (RAG optional)
+- [ ] Frontend chat widget (floating panel, rate limit, fallback to static FAQ)
+- [ ] Privacy: PII redaction, opt-in, logging policy
+
+---
+
+## PE-10 — Internationalisation (i18n) — ✅
+
+**Purpose:** Bilingual UI (Chinese/English) with URL-based language routing.
+
+**Trigger:** Product requirement for multi-locale storefront.
+
+- [x] Adopt `next-intl` with `/en/` and `/zh/` App Router segments (`localePrefix: always`).
+- [x] Message catalogues: `messages/en.json` (Australian English, en-AU spelling) + `messages/zh.json` (Simplified Chinese).
+- [x] `LocaleSwitcher` in header; locale-aware `Link`/`useRouter` via `@/i18n/navigation`.
+- [x] Customer shell translated: home, auth, nav, footer, admin nav, ProductCard, offline, not-found.
+- [x] `formatPrice` uses `en-AU` / `zh-CN` Intl locales; currency remains AUD.
+- [x] Middleware combines i18n routing with existing auth guards.
+- [ ] Translate remaining admin page body copy (products/orders/pricing forms — optional follow-up).
+- [ ] `hreflang` SEO tags (optional follow-up).
+
+---
+
+## Completed (do not re-open)
+
+Everything below is **done** — tracked in [HANDOFF.md](HANDOFF.md) §5–§10:
+
+- [x] P1 MVP (auth, products, cart, Stripe checkout, orders)
+- [x] P2 P14 features (RBAC, admin, pricing, wishlist, guest cart, email, PWA, Square, analytics, advanced search)
+- [x] P3 engineering (CI/CD, mappers/factories, UI primitives, compression/cache, deployment docs)
+- [x] P14 preferred (refresh tokens, async email queue, S3/LocalStack)
+- [x] P14 documentation (ARCHITECTURE, UI-DESIGN, USER-GUIDE, DEMO — EN + ZH)

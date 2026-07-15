@@ -7,24 +7,27 @@
 
 ## 1. Overview
 
-Novacart is a full-stack e-commerce platform built on a **MonolithFirst** philosophy: a single, well-layered application serves as the foundation, with scaling extensions (microservices, message queues, full-text search) deferred to a later phase when traffic demands it (see [README §Planned Enhancements](../README.md#planned-enhancements)).
-
-The system serves three user roles — **Customer**, **Administrator**, and **System Administrator** — covering browsing, cart, checkout, payments, order management, dynamic pricing, analytics, and PWA offline support.
+Novacart is a full-stack e-commerce platform. **Default deployment (PE-1)** is **microservices**: YARP gateway, Auth / Product / Cart / Order APIs, RabbitMQ + MassTransit Saga, four logical PostgreSQL databases. Legacy monolith: `docker-compose.monolith.yml`. See [MICROSERVICES-PE1.md](MICROSERVICES-PE1.md) and [DATABASE-PER-SERVICE.md](DATABASE-PER-SERVICE.md).
 
 ```
-┌─────────────┐   HTTPS    ┌──────────────────┐   REST API    ┌────────────────────┐
-│   Browser   │ ──────────▶│   Next.js 14      │ ────────────▶│  ASP.NET Core 8     │
-│  (Client /  │ ◀──────────│   Frontend        │ ◀────────────│  Backend API        │
-│   PWA)      │            │   (App Router)    │               │  (REST + JWT cookie)│
-└─────────────┘            └──────────────────┘               └──────────┬───────────┘
-                                                                            │
-                                              ┌────────────────┬───────────┼───────────────┐
-                                              ▼                ▼           ▼               ▼
-                                        ┌──────────┐    ┌──────────┐  ┌──────────┐   ┌──────────┐
-                                        │PostgreSQL│    │  Redis   │  │  Stripe  │   │  Square  │
-                                        │ (source  │    │ (cache + │  │ (payment │   │ (catalogue│
-                                        │  of truth│    │  session)│  │  webhook)│   │   sync)  │
-                                        └──────────┘    └──────────┘  └──────────┘   └──────────┘
+┌─────────────┐   HTTPS    ┌──────────────────┐   /api/*     ┌────────────────────┐
+│   Browser   │ ──────────▶│   Next.js 14      │ ────────────▶│  YARP Gateway       │
+│  (Client /  │ ◀──────────│   Frontend        │ ◀────────────│  :5000              │
+│   PWA)      │            │   (App Router)    │               └──────────┬───────────┘
+└─────────────┘            └──────────────────┘                          │
+                                    ┌────────────────────────────────────┼────────────────────┐
+                                    ▼              ▼                     ▼                    ▼
+                              ┌──────────┐  ┌──────────┐         ┌──────────┐         ┌──────────┐
+                              │ Auth API │  │Product   │         │ Cart API │         │ Order API│
+                              │          │  │API       │         │          │         │ + Saga   │
+                              └────┬─────┘  └────┬─────┘         └────┬─────┘         └────┬─────┘
+                                   │             │    Refit/MQ        │                    │
+                                   └─────────────┴────────── RabbitMQ ─┴────────────────────┘
+                                                          │
+                              ┌─────────────────────────┼─────────────────────────┐
+                              ▼                         ▼                         ▼
+                        PostgreSQL (×4)            Redis                    Stripe / Square
+                        logical DBs                cache                    webhooks
 ```
 
 ### Tech stack at a glance
@@ -38,8 +41,9 @@ The system serves three user roles — **Customer**, **Administrator**, and **Sy
 | Cache | Redis 7 (cache-aside for products & orders) |
 | Payment | Stripe (Checkout Sessions + signed webhooks, tokenised — no card storage) |
 | Catalog integration | Square Catalogue API (sandbox sync) |
-| Auth | JWT (HS256) in HttpOnly cookie + bcrypt password hashing |
-| Email | MailKit (SMTP) |
+| Auth | JWT (HS256) access + refresh tokens in HttpOnly cookies + bcrypt password hashing |
+| Email | MailKit (SMTP) via bounded `Channel<T>` + `BackgroundService` worker |
+| Object storage | S3-compatible (`IS3StorageService`); **LocalStack** in dev, AWS S3 in prod |
 | Container | Docker, Docker Compose |
 | Cloud target | AWS (EC2 / RDS / ElastiCache / S3) — see [Deployment Guide](deployment-guide.md) |
 
@@ -90,14 +94,15 @@ The backend follows a strict **`Controller → Service → Mapper → Entity`** 
 
 | Service | Responsibility |
 |---|---|
-| `AuthService` | Register / login; bcrypt hashing; JWT issuance |
-| `JwtTokenService` | HS256 token signing (Singleton, stateless) |
+| `AuthService` | Register / login / refresh; bcrypt hashing; JWT issuance |
+| `JwtTokenService` | HS256 access-token signing (Singleton, stateless) |
+| `RefreshTokenService` | Opaque refresh-token generate / rotate / reuse detection / revoke-all |
 | `ProductService` | Catalogue list/detail; search, facets, sort, pagination; Redis cache; dynamic pricing |
 | `AdminProductService` | Product CRUD; slug validation; metadata validation; soft-delete; cache invalidation |
 | `CartService` | Auth + guest cart CRUD; merge-on-login; applies dynamic pricing |
 | `OrderService` | User order history/detail (read); Redis cache; ownership checks |
 | `PaymentService` | Checkout orchestration; Stripe webhook handling (idempotent, transactional) |
-| `AdminOrderService` | Admin order view + 6-state status machine + audit history + email |
+| `AdminOrderService` | Admin order view + 6-state status machine + audit history; enqueues status emails |
 | `PricingService` | Pure rule-evaluation engine (percent/flat/fixed, scope priority, time windows) |
 | `PriceRuleService` | Pricing rule CRUD + validation |
 | `UserService` | Customer profile read/update |
@@ -106,6 +111,9 @@ The backend follows a strict **`Controller → Service → Mapper → Entity`** 
 | `AnalyticsService` | Sales aggregation (totals, sales-over-time, best-sellers, low-stock) |
 | `SquareCatalogueService` | Catalogue sync from Square API (sandbox, with simulation fallback) |
 | `EmailService` | MailKit SMTP sending (or console-log fallback when unconfigured) |
+| `EmailQueue` | Bounded in-process queue; producers enqueue, worker sends |
+| `EmailBackgroundWorker` | Hosted service draining `EmailQueue` → scoped `EmailService` |
+| `S3StorageService` | Presigned PUT/GET URLs for admin product-image uploads |
 | `RedisCacheService` | Generic Get/Set/Remove/RemoveByPrefix (JSON serialisation) |
 | `GlobalExceptionHandler` | Maps `AppException`/`AuthException` → `ProblemDetails` |
 
@@ -145,9 +153,9 @@ Model-validation failures (e.g. `[Required]`, `[Url]`) are shaped by `ConfigureA
 
 ### DI registrations (`Program.cs`)
 
-- **Singletons** (stateless / thread-safe): `AppDbContext`, `IConnectionMultiplexer` (Redis), `IRedisCacheService`, `IJwtTokenService`.
-- **Scoped** (per-request): all business services, factories, strategies.
-- **Hosted services**: none yet (email is currently synchronous — async-queue is a planned enhancement).
+- **Singletons** (stateless / thread-safe): `IConnectionMultiplexer` (Redis), `IRedisCacheService`, `IJwtTokenService`, `EmailQueue`, `IS3StorageService`.
+- **Scoped** (per-request): `AppDbContext`, all business services, factories, strategies (including `IRefreshTokenService`).
+- **Hosted services**: `EmailBackgroundWorker` drains the email queue on a background thread.
 
 ### Middleware pipeline (order matters)
 
@@ -163,7 +171,8 @@ UseExceptionHandler()          ← first; catches everything downstream
 
 ### Security
 
-- **JWT in HttpOnly cookie** (`novacart_jwt`, `Secure`, `SameSite=Strict`, `Path=/api`): the frontend never touches the raw token — protects against XSS. The bearer middleware reads it from the cookie via `OnMessageReceived`, with a Bearer-header fallback for Swagger.
+- **Access JWT in HttpOnly cookie** (`novacart_jwt`, 15 min, `Secure`, `SameSite=Strict`, `Path=/api`): the frontend never touches the raw token — protects against XSS. The bearer middleware reads it from the cookie via `OnMessageReceived`, with a Bearer-header fallback for Swagger.
+- **Refresh token in HttpOnly cookie** (`novacart_refresh`, 7 days, `Path=/api/auth`): narrower scope — sent only to auth endpoints. Rotated on each `POST /api/auth/refresh`; reuse of a revoked token revokes all sessions for that user.
 - **Edge flag cookie** (`novacart_authed=1`): a non-sensitive flag the Next.js Edge middleware reads to guard protected routes (since it can't access the HttpOnly JWT from `localStorage`).
 - **RBAC**: 3 roles (`customer` / `admin` / `sysadmin`) carried as JWT claims. Admin endpoints use `[Authorize(Roles = RoleNames.AdminRoles)]` (`admin,sysadmin`); sensitive system operations use `[Authorize(Roles = RoleNames.SysAdmin)]` (sysadmin only).
 - **Payment tokenisation**: Stripe handles card data; Novacart never stores card numbers — only Stripe's payment intent/session IDs.
@@ -213,7 +222,7 @@ Stripe                 CheckoutController          PaymentService.HandleWebhookA
   │                                                   │       - Order → Paid, Payment → Succeeded
   │                                                   │       - clear user's cart
   │                                                   │     COMMIT
-  │                                                   │  4. send confirmation email (best-effort)
+  │                                                   │  4. enqueue confirmation email (EmailQueue → worker)
   │                                                   │  5. invalidate order + product caches
   │  ◀──────── 200 OK ──────────────────────────────│
 ```
@@ -257,7 +266,7 @@ RootLayout
 
 - **Route guarding**: Next.js Edge `middleware.ts` checks the `novacart_authed` flag cookie to protect `/cart`, `/orders`, `/checkout`, `/admin/*` and redirect when needed.
 - **Admin shell**: `/admin` has its own nested `layout.tsx` with a sidebar (collapses to a hamburger below `md`/768px) and a client-side role gate.
-- **API layer**: `apiCall` wrapper (`lib/api.ts`) injects `credentials: 'include'`, parses `ProblemDetails`/validation errors, distinguishes 401 (expired → redirect to login) from 403 (permission error, stay).
+- **API layer**: `apiCall` wrapper (`lib/api.ts`) sends `credentials: 'include'`, auto-refreshes on 401 (coalesced `POST /api/auth/refresh` then retries once), parses `ProblemDetails`/validation errors, and distinguishes refresh failure (redirect to login) from 403 (permission error, stay).
 - **Design system**: token-driven (see [UI Design](UI-DESIGN.md)); ECharts dashboard is dynamically imported (`ssr:false`) for App Router compatibility.
 
 ---
@@ -274,11 +283,58 @@ These are recorded for honesty and future refactors — they do not block curren
 
 ---
 
-## 9. Related documents
+## 10. Future microservices target (PE-1 — in progress)
+
+When scaling triggers in [HANDOFF §11](../HANDOFF.md#11-planned-enhancements-scaling-tail--not-scheduled) are met, Novacart has an **approved final architecture** (not the earlier Consul/Ocelot sketch):
+
+| Concern | Final choice | Status (2026-07-16) |
+|---------|----------------|---------------------|
+| Orchestration / local dev | **.NET Aspire** AppHost | Docker Compose default stack |
+| API gateway | **YARP** | Live |
+| Service discovery | Aspire → **Kubernetes** (no Consul) | Compose DNS only |
+| Sync resilience | **Polly** + Refit | Polly via ServiceDefaults |
+| Messaging | **RabbitMQ** + **MassTransit** | Live |
+| Reliable publish | **Transactional Outbox** (MassTransit EF, Order DB) | Live |
+| Checkout choreography | **MassTransit Saga** | **Live** — `OrderCheckoutStateMachine` (Order DB) |
+| Multi-instance stock | **Redis Redlock** (PE-4, same phase) | **Live** — `StockReservationService` |
+
+Services: **Auth**, **Product**, **Cart**, **Order** — each with its own PostgreSQL (target); **shared DB** for Phase 1–4. **PE-2** and **PE-5** are **included in this design**, not separate stacks.
+
+### 10.1 Redis stock lock (PE-4)
+
+Product service **`StockReservationService`** acquires one Redis lock per distinct `ProductId` on the checkout path (`PaymentCompleted` → `ReserveStockConsumer`):
+
+| Property | Value |
+|----------|--------|
+| Key | `novacart:stock:lock:{productId:N}` |
+| Acquire | `SET key token NX PX` with random token |
+| Release | Lua compare-and-del (token must match) |
+| TTL | 30 seconds (auto-expire on crash) |
+| Wait | Up to 5 seconds with 50 ms backoff |
+| Deadlock | Multi-SKU orders lock product IDs in **sorted key order** |
+| Idempotency | Skip if order status ≠ `pending` (same as webhook dedupe) |
+| Contention | MassTransit retry (5×, 2 s interval) if lock not acquired |
+
+### 10.2 Checkout saga (Phase 4)
+
+Order service hosts **`OrderCheckoutStateMachine`** (persisted in `order_checkout_sagas`):
+
+```
+PaymentCompleted → saga start (AwaitingStock)
+StockReserved    → mark Paid, publish OrderPaid + ClearCartForOrder, finalize
+StockReservationFailed → cancel order, finalize
+```
+
+Product **`ReserveStockConsumer`** and Cart **`ClearCartConsumer`** remain event-driven; **`SendOrderConfirmationConsumer`** handles `OrderPaid`.
+
+Full topology: **[docs/MICROSERVICES-PE1.md](MICROSERVICES-PE1.md)** · [中文版](MICROSERVICES-PE1_ZH.md).
+
+## 11. Related documents
 
 - [Database ER Diagram & Schema Design](../Database_ER_Diagram.md) — entity relationships, architectural schema decisions, indexing strategy
 - [Database Standards](database-standards.md) — Alibaba convention audit, Guid PK rationale
 - [UI Design System](UI-DESIGN.md) — design tokens, component library, responsive strategy
 - [Deployment Guide](deployment-guide.md) — AWS architecture, production Docker Compose, env-var reference
 - [Stripe Webhook Local Testing](STRIPE_WEBHOOK_LOCAL.md) — ngrok + Stripe CLI setup
+- [PE-1 Microservices final plan (future)](MICROSERVICES-PE1.md) — Aspire + YARP + MassTransit + RabbitMQ + Saga + Outbox
 - [P14 Project Specification](../P14_Modern_Ecommerce_Web_App.md) — original requirements this system satisfies

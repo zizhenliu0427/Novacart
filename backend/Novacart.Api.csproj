@@ -7,18 +7,30 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Services/**/*.cs" />
+    <Compile Remove="Data/**/*.cs" />
+    <Compile Remove="Models/**/*.cs" />
+    <Compile Remove="Mappers/**/*.cs" />
+    <Compile Remove="Factories/**/*.cs" />
+    <Compile Remove="Storage/**/*.cs" />
+    <Compile Remove="Novacart.Core/**/*.cs" />
+    <Compile Remove="Novacart.Api/**/*.cs" />
+    <Compile Remove="Novacart.AppHost/**/*.cs" />
+    <Compile Remove="Novacart.Gateway/**/*.cs" />
+    <Compile Remove="Novacart.ServiceDefaults/**/*.cs" />
+    <Compile Remove="Services/**/*.cs" />
+    <Content Remove="Novacart.Core/**" />
+    <Content Remove="Novacart.AppHost/**" />
+    <Content Remove="Novacart.Gateway/**" />
+    <Content Remove="Novacart.ServiceDefaults/**" />
+    <Content Remove="Services/**" />
+    <ProjectReference Include="Novacart.Core\Novacart.Core.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.0" />
-    <PackageReference Include="StackExchange.Redis" Version="2.7.10" />
-    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
-    <PackageReference Include="Stripe.net" Version="43.15.0" />
-    <PackageReference Include="Square" Version="35.0.0" />
-    <PackageReference Include="MailKit" Version="4.3.0" />
-    <PackageReference Include="AWSSDK.S3" Version="3.7.400" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.0">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
   </ItemGroup>
 
 </Project>

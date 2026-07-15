@@ -95,7 +95,7 @@ jobs:
       - name: Build production bundle
         run: npm run build
 
-  # ── Docker: verify images build ────────────────────────
+  # ── Docker: verify microservices stack builds ─────────
   docker-build:
     name: Docker Build Verification
     runs-on: ubuntu-latest
@@ -104,8 +104,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build backend image
-        run: docker build -f backend/Dockerfile backend/
+      - name: Build microservices stack
+        run: docker compose build db-migrate gateway auth-api product-api cart-api order-api frontend
 
-      - name: Build frontend image
-        run: docker build -f frontend/Dockerfile frontend/
+      - name: E2E smoke (optional services)
+        run: |
+          docker compose up -d postgres redis rabbitmq jaeger db-migrate auth-api product-api cart-api order-api gateway
+          chmod +x scripts/e2e-microservices-smoke.sh
+          ./scripts/e2e-microservices-smoke.sh || true
+        continue-on-error: true

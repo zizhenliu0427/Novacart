@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import ReactECharts from 'echarts-for-react';
-import { formatPrice } from '@/types/product';
+import { useFormatAudPrice } from '@/hooks/useFormatAudPrice';
 
 type SalesPoint = {
   date: string;
@@ -28,6 +28,8 @@ type SalesChartProps = {
  * echarts-for-react touches `window` during mount.
  */
 export default function SalesChart({ data, height = 320 }: SalesChartProps) {
+  const { formatAud } = useFormatAudPrice();
+
   const option = useMemo(() => {
     const dates = data.map((d) => d.date);
     const revenues = data.map((d) => d.revenue);
@@ -42,7 +44,7 @@ export default function SalesChart({ data, height = 320 }: SalesChartProps) {
         borderWidth: 0,
         textStyle: { color: '#f9fafb', fontSize: 12 },
         valueFormatter: (value: number, index: number) =>
-          index === 0 ? formatPrice(value) : `${value} order${value === 1 ? '' : 's'}`,
+          index === 0 ? formatAud(value) : `${value} order${value === 1 ? '' : 's'}`,
       },
       xAxis: {
         type: 'category',
@@ -57,7 +59,7 @@ export default function SalesChart({ data, height = 320 }: SalesChartProps) {
           axisLabel: {
             color: 'var(--ink-muted)',
             fontSize: 11,
-            formatter: (value: number) => formatPrice(value),
+            formatter: (value: number) => formatAud(value),
           },
           splitLine: { lineStyle: { color: 'var(--border)' } },
         },
@@ -103,7 +105,7 @@ export default function SalesChart({ data, height = 320 }: SalesChartProps) {
         },
       ],
     };
-  }, [data]);
+  }, [data, formatAud]);
 
   return (
     <ReactECharts

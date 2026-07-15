@@ -10,6 +10,9 @@ using Novacart.Api.Models.Dtos.Cart;
 using Microsoft.EntityFrameworkCore;
 using Novacart.Api.Data;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Http;
+using Novacart.Api.Services.Catalog;
 
 namespace Novacart.Api.Tests;
 
@@ -39,6 +42,7 @@ public class PaymentServiceTests
     private readonly IConfiguration _config;
     private readonly IPaymentStrategyFactory _strategyFactory;
     private readonly IOrderFactory _orderFactory;
+    private readonly IServiceProvider _services;
 
     public PaymentServiceTests()
     {
@@ -52,14 +56,18 @@ public class PaymentServiceTests
         var strategies = new List<IPaymentStrategy> { new FakePaymentStrategy() };
         _strategyFactory = new PaymentStrategyFactory(strategies);
         _orderFactory = new OrderFactory(new PricingService());
+        _services = new ServiceCollection().BuildServiceProvider();
     }
 
     [Fact]
     public async Task ProcessCheckoutAsync_CreatesOrderAndPayment_WhenCartIsValid()
     {
         using var db = TestDbFactory.Create();
-        var cartSvc = new CartService(db, new PricingService());
-        var paymentSvc = new PaymentService(db, _strategyFactory, _orderFactory, new PricingService(), new NullRedisCacheService(), _config, new FakeEmailQueue(), NullLogger<PaymentService>.Instance);
+        var cartSvc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db));
+        var paymentSvc = new PaymentService(
+            db, _strategyFactory, _orderFactory, new PricingService(), new NullRedisCacheService(), _config,
+            new FakeEmailQueue(), NullLogger<PaymentService>.Instance, _services,
+            new DbProductCatalogStoreAdapter(db), new HttpContextAccessor());
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
@@ -108,7 +116,10 @@ public class PaymentServiceTests
     public async Task ProcessCheckoutAsync_ThrowsAppException_WhenCartIsEmpty()
     {
         using var db = TestDbFactory.Create();
-        var paymentSvc = new PaymentService(db, _strategyFactory, _orderFactory, new PricingService(), new NullRedisCacheService(), _config, new FakeEmailQueue(), NullLogger<PaymentService>.Instance);
+        var paymentSvc = new PaymentService(
+            db, _strategyFactory, _orderFactory, new PricingService(), new NullRedisCacheService(), _config,
+            new FakeEmailQueue(), NullLogger<PaymentService>.Instance, _services,
+            new DbProductCatalogStoreAdapter(db), new HttpContextAccessor());
         var userId = await TestDbFactory.SeedTestUserAsync(db);
 
         var addressId = await SeedAddressAsync(db, userId);
@@ -123,8 +134,11 @@ public class PaymentServiceTests
     public async Task ExecutePaymentCompletionAsync_UpdatesStatuses_DecrementsStock_AndClearsCart()
     {
         using var db = TestDbFactory.Create();
-        var cartSvc = new CartService(db, new PricingService());
-        var paymentSvc = new PaymentService(db, _strategyFactory, _orderFactory, new PricingService(), new NullRedisCacheService(), _config, new FakeEmailQueue(), NullLogger<PaymentService>.Instance);
+        var cartSvc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db));
+        var paymentSvc = new PaymentService(
+            db, _strategyFactory, _orderFactory, new PricingService(), new NullRedisCacheService(), _config,
+            new FakeEmailQueue(), NullLogger<PaymentService>.Instance, _services,
+            new DbProductCatalogStoreAdapter(db), new HttpContextAccessor());
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
@@ -171,8 +185,11 @@ public class PaymentServiceTests
     public async Task ExecutePaymentCompletionAsync_CancelsOrder_WhenStockExhaustedPriorToCompletion()
     {
         using var db = TestDbFactory.Create();
-        var cartSvc = new CartService(db, new PricingService());
-        var paymentSvc = new PaymentService(db, _strategyFactory, _orderFactory, new PricingService(), new NullRedisCacheService(), _config, new FakeEmailQueue(), NullLogger<PaymentService>.Instance);
+        var cartSvc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db));
+        var paymentSvc = new PaymentService(
+            db, _strategyFactory, _orderFactory, new PricingService(), new NullRedisCacheService(), _config,
+            new FakeEmailQueue(), NullLogger<PaymentService>.Instance, _services,
+            new DbProductCatalogStoreAdapter(db), new HttpContextAccessor());
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);

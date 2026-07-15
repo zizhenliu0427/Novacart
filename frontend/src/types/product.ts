@@ -50,8 +50,9 @@ export interface AdminProductRequest {
   isActive: boolean;
 }
 
-export function formatPrice(value: number, currency = 'AUD'): string {
-  return new Intl.NumberFormat('en-AU', { style: 'currency', currency }).format(value);
+export function formatPrice(value: number, currency = 'AUD', locale?: string): string {
+  const intlLocale = locale === 'zh' ? 'zh-CN' : 'en-AU';
+  return new Intl.NumberFormat(intlLocale, { style: 'currency', currency }).format(value);
 }
 
 /** Parse the raw metadata JSON string into a key→value record for display. */

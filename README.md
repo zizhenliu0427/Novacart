@@ -3,7 +3,7 @@
 [![CI](https://github.com/zizhenliu0427/Novacart/actions/workflows/ci.yml/badge.svg)](https://github.com/zizhenliu0427/Novacart/actions/workflows/ci.yml)
 > 中文版：[README_CN.md](README_CN.md)
 
-A modern e-commerce platform built with .NET backend and Next.js frontend. This project follows a **MonolithFirst** approach — a simple, functional MVP as the foundation, with scalability and advanced features planned for future iterations.
+A modern e-commerce platform built with .NET backend and Next.js frontend. **Default deployment is microservices** (YARP gateway + Auth/Product/Cart/Order + RabbitMQ + MassTransit Saga). Legacy monolith: `docker-compose.monolith.yml`.
 
 ---
 
@@ -38,12 +38,12 @@ Novacart is a full-stack e-commerce web application. The MVP delivers five core 
 
 - Register and login with **JWT (JSON Web Token)** authentication
 - Passwords hashed with **bcrypt** (salted, one-way)
-- Session management: JWT stored in **HttpOnly cookies** (prevents XSS)
+- Session management: short-lived access JWT + rotated refresh token in **HttpOnly cookies** (prevents XSS)
 - Protected routes — unauthenticated users redirected to login
 
 ### 2. Product Browsing
 
-- Product catalogue from **PostgreSQL seed data** (12 products, 5 categories) — **Square Catalogue API** integration planned for P2
+- Product catalogue from **PostgreSQL seed data** (12 products, 5 categories), with **Square Catalogue API** sync in admin (P2)
 - Display product name, description, images, and price
 - Search and filter products by keyword and category
 
@@ -110,13 +110,13 @@ Novacart is a full-stack e-commerce web application. The MVP delivers five core 
 ### 10. Frontend Architecture
 
 - **Reusable components**: Sidebar, Header, ProductCard, CartItem (~40% code reduction)
-- **Custom React Hooks**: `useAuth`, `useCart`, `useApi` (preferred over HOC)
+- **Custom React Hooks**: `useAuth`, `useCart` (via Context providers)
 - **Responsive Sidebar**: auto-collapse at ≤768px breakpoint
 - **Nested routing with route guards**: Next.js App Router + Middleware
 
 ### 11. API & Documentation
 
-- **Unified API layer**: `apiCall` wrapper with auto token injection, error parsing, 401/403 handling
+- **Unified API layer**: `apiCall` wrapper with cookie auth (`credentials: 'include'`), automatic refresh on 401, error parsing, 401/403 handling
 - **Swagger / OpenAPI**: auto-generated interactive API docs (Swashbuckle)
 
 ### 12. Testing & CI/CD
@@ -163,20 +163,21 @@ The P14 spec requires comprehensive technical documentation. All deliverables no
 
 ## Planned Enhancements
 
-> Future iterations as the platform scales. Not part of the current MVP.
+> Future iterations as the platform scales. **Not yet implemented** — not part of P14 or the current release.
+> Tracked in **[TODO.md](TODO.md)** (checklist) and [HANDOFF.md §11](HANDOFF.md#11-planned-enhancements-scaling-tail--not-scheduled) (context + triggers).
 
 | Technology | Purpose |
 |---|---|
-| **Microservice Architecture** | Decompose monolith into independent services (Auth, Product, Cart, Order). Consul for service discovery, YARP/Ocelot as API gateway, Polly for circuit breaking. |
-| **RabbitMQ** | Async order processing, inventory updates, email notifications. |
+| **Microservices (PE-1 final)** | **.NET Aspire** + **YARP** + **Polly**; split into Auth / Product / Cart / Order. **MassTransit + RabbitMQ**, **Transactional Outbox**, **Saga** for checkout. **Design:** [docs/MICROSERVICES-PE1.md](docs/MICROSERVICES-PE1.md). |
+| **RabbitMQ + async orders** | ✅ **Included in PE-1 final** — durable messaging, inventory/email/cart via MassTransit (replaces in-process `EmailQueue` at scale). |
 | **ElasticSearch** | Full-text search for product catalogues (material, style, price). |
-| **Distributed Lock (Redis)** | Redlock for atomic inventory deduction across multiple instances. |
-| **Async Order Processing** | Decouple checkout workflows (payment → inventory → email) via RabbitMQ. |
+| **Distributed Lock (Redis)** | Redlock for atomic inventory deduction — **required with PE-1** multi-instance Product/Order. |
+| **Async order processing** | ✅ **Included in PE-1 final** — MassTransit Saga (payment → stock → email → clear cart). |
 | **Cart Optimisation** | Redis-backed cart: sub-ms reads, cross-device sync, guest-to-user merge. |
 | **SQL Sharding** | Horizontal partitioning of large tables by date or user ID. |
 | **Thread Pool Tuning** | Custom thread pool for flash sales and bulk order processing. |
 | **AI Chatbot (Low Priority)** | Customer service bot via OpenAI API or Ollama (local LLM). |
-| **Internationalisation (i18n)** | Bilingual UI (Chinese/English) with URL-based language routing. |
+| **Internationalisation (i18n)** | ✅ **Implemented** — `/en/` + `/zh/` via next-intl (AU English + 简体中文). |
 
 ---
 
@@ -205,7 +206,7 @@ The P14 spec requires comprehensive technical documentation. All deliverables no
 |---|---|
 | **PWA** | Web App Manifest, Service Worker |
 | **CSS** | CSS Grid, rem, custom properties, media queries |
-| **State Mgmt** | React Context API / Zustand |
+| **State Mgmt** | React Context API (`AuthContext`, `CartContext`, `WishlistContext`, `ToastContext`) |
 | **Components** | Reusable library + Custom Hooks |
 | **Charts** | ECharts (admin dashboard) |
 | **API Docs** | Swagger / OpenAPI (Swashbuckle) |
@@ -286,6 +287,10 @@ cp .env.example .env
 # Start all services (build + run in background)
 docker compose up --build -d
 
+# Verify microservices smoke (gateway health + products)
+chmod +x scripts/e2e-microservices-smoke.sh
+./scripts/e2e-microservices-smoke.sh
+
 # Stop all services
 docker compose down
 
@@ -298,11 +303,14 @@ docker compose down -v
 | Service | URL | Description |
 |---|---|---|
 | **Frontend** | http://localhost:3000 | Next.js application |
-| **Backend API** | http://localhost:5000 | ASP.NET Core Web API |
-| **Swagger Docs** | http://localhost:5000/swagger | API documentation |
-| **Health Check** | http://localhost:5000/api/health | Backend health status |
-| **PostgreSQL** | localhost:5432 | Database (user: postgres, pass: postgres) |
+| **YARP Gateway** | http://localhost:5000 | API entry (`/api/*`) |
+| **Health Check** | http://localhost:5000/api/health | Order service health (via gateway) |
+| **Jaeger UI** | http://localhost:16686 | OpenTelemetry traces |
+| **RabbitMQ** | http://localhost:15672 | Management UI (guest/guest) |
+| **PostgreSQL** | localhost:5432 | 4 logical DBs (see [DATABASE-PER-SERVICE.md](docs/DATABASE-PER-SERVICE.md)) |
 | **Redis** | localhost:6379 | Cache |
+
+Legacy monolith: `docker compose -f docker-compose.monolith.yml up --build -d` (Swagger at `:5000/swagger`).
 
 ### Docker Commands
 
@@ -317,7 +325,8 @@ docker compose ps
 docker compose logs -f
 
 # View logs (specific service)
-docker compose logs -f backend
+docker compose logs -f order-api
+docker compose logs -f gateway
 docker compose logs -f frontend
 
 # Restart a specific service
@@ -442,8 +451,9 @@ novacart/
 | Method | Endpoint | Description |
 |---|---|---|
 | POST | `/api/auth/register` | Register a new user |
-| POST | `/api/auth/login` | Login and receive JWT |
-| POST | `/api/auth/logout` | Invalidate session |
+| POST | `/api/auth/login` | Login and receive JWT + refresh token (HttpOnly cookies) |
+| POST | `/api/auth/refresh` | Rotate access + refresh tokens |
+| POST | `/api/auth/logout` | Revoke refresh tokens and clear cookies |
 
 ### Products
 

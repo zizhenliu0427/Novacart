@@ -5,7 +5,7 @@
 > project, the conventions to follow, the frontend design system to build against, and the
 > **Priority 2 (P2)** & **Priority 3 (P3)** feature-by-feature implementation checklist.
 >
-> **Status:** Priority 1 (MVP), Priority 2 (P2), and Priority 3 (P3) are **complete & verified**, plus the P14 "preferred" deliverables (refresh tokens, async email queue, S3/LocalStack storage) and all documentation deliverables. See §8 and §10 for details.
+> **Status:** Priority 1 (MVP), Priority 2 (P2), Priority 3 (P3), and P14 are **complete**. **PE-1 microservices** are **implemented** (default `docker compose up`). Remaining Planned Enhancements (PE-3+, etc.) are in §11 and **[TODO.md](TODO.md)**.
 >
 > Last updated: 2026-07-15 — P14 preferred + docs complete: JWT refresh tokens (rotation + reuse detection), async email queue (Channel + BackgroundService), S3 object storage with LocalStack (no AWS account needed), plus ARCHITECTURE/UI-DESIGN/USER-GUIDE/DEMO docs. Backend **130** tests, frontend **24** tests, all passing.
 
@@ -32,7 +32,7 @@
   - P3-4: Breakpoint adjustments, reusable generic DataTable, Modal, Pagination, Toast context
   - P3-5: Brotli/Gzip response compression, HTTP caching, deep health checks
   - P3-6: Production docker-compose override, secrets template, and AWS deployment architectural plan
-- **Everything runs in Docker** — one command: `docker compose up --build -d`.
+- **Everything runs in Docker** — one command: `docker compose up --build -d` (YARP gateway + 4 microservices + RabbitMQ). Legacy monolith: `docker compose -f docker-compose.monolith.yml up --build -d`.
 - **The schema is fully indexed and audited** against Alibaba standards — see §7.
 
 
@@ -102,8 +102,9 @@
 ### Running the Application
 ```bash
 cd "Novacart"
-docker compose up --build -d        # builds net8 backend + Next.js frontend, starts everything
-docker compose logs -f backend      # watch startup / migration logs
+docker compose up --build -d        # microservices: gateway :5000 + frontend :3000
+docker compose logs -f gateway      # watch YARP / routed API startup
+docker compose logs -f db-migrate   # EF migrations (runs once per up)
 docker compose down                 # stop
 docker compose down -v              # stop + wipe DB/redis volumes
 ```
@@ -111,7 +112,7 @@ docker compose down -v              # stop + wipe DB/redis volumes
 ### Running Unit Tests (Docker-only)
 Both backend and frontend test suites are fully containerized and can be built and run in Docker:
 
-**Backend Tests (110 cases currently defined and verified):**
+**Backend Tests (130 cases currently defined and verified):**
 ```bash
 docker build -f Dockerfile.backend.test -t novacart-backend-test .
 docker run --rm novacart-backend-test
@@ -512,18 +513,57 @@ P2 and P3 are **fully complete & verified**.
 
 ## 11. Planned Enhancements (scaling tail — not scheduled)
 
-From the README's "Planned Enhancements" table — explicitly **out of scope** until the platform needs to scale.
-Recorded so the roadmap is complete; do **not** start these during P2/P3.
+Canonical source: [README §Planned Enhancements](README.md#planned-enhancements). Actionable checklist: **[TODO.md](TODO.md)**.
 
-| Enhancement | First natural trigger |
-|---|---|
-| Microservice split (Auth/Product/Cart/Order) + API gateway (YARP/Ocelot) + Consul + Polly | When the monolith's teams/deploys need independence. |
-| RabbitMQ async order processing + email/inventory pipeline | Grows out of P2-6 (email) once inline sending isn't enough. |
-| ElasticSearch full-text catalogue search | Successor to P2-12's Postgres FTS when relevance/scale demands it. |
-| Redis distributed lock (Redlock) for atomic inventory | When multiple app instances contend on stock (flash sales). |
-| Redis-backed cart (sub-ms, cross-device) | Optimisation of P2-4 guest cart. |
-| SQL sharding, thread-pool tuning | High-volume scaling. |
-| AI chatbot (OpenAI/Ollama), i18n (zh/en) | Product-driven, low priority. |
+All items below are **not yet implemented** — explicitly out of scope for P1/P2/P3/P14. Do **not** start these unless the trigger condition is met. Email is already async via in-process `Channel<T>`; cart already merges guest→user in PostgreSQL — these entries describe the *next* scaling step beyond that.
+
+| # | Enhancement | Purpose (from README) | First natural trigger |
+|---|---|---|---|
+| PE-1 | **Microservices (final)** | **.NET Aspire** + **YARP** + **Polly**; Auth / Product / Cart / Order. **MassTransit + RabbitMQ**, **Transactional Outbox**, **MassTransit Saga** for checkout. Design: [docs/MICROSERVICES-PE1.md](docs/MICROSERVICES-PE1.md). | Multiple teams, uneven scaling, or durable messaging needed across replicas. |
+| PE-2 | **RabbitMQ** | ✅ **Part of PE-1 final** — MassTransit transport; replaces in-process `EmailQueue` at scale. | (See PE-1.) |
+| PE-3 | **ElasticSearch** | Full-text search for product catalogues (material, style, price). | Postgres ILIKE + tag facets no longer meet relevance/latency at catalogue scale. |
+| PE-4 | **Distributed Lock (Redis)** | **Redlock** — **required with PE-1** multi-instance stock consumers. | Multiple backend replicas; flash-sale oversell risk. |
+| PE-5 | **Async Order Processing** | ✅ **Part of PE-1 final** — MassTransit Saga (payment → inventory → email → clear cart). | (See PE-1.) |
+| PE-6 | **Cart Optimisation** | Redis-backed cart: sub-ms reads, cross-device sync, guest-to-user merge. | PostgreSQL cart latency or cross-device sync becomes a bottleneck (current guest merge already works in Postgres). |
+| PE-7 | **SQL Sharding** | Horizontal partitioning of large tables by date or user ID. | Single Postgres instance hits storage/IO limits on orders or audit tables. |
+| PE-8 | **Thread Pool Tuning** | Custom thread pool for flash sales and bulk order processing. | Thread-pool starvation or tail latency under burst checkout load. |
+| PE-9 | **AI Chatbot (Low Priority)** | Customer service bot via **OpenAI API** or **Ollama** (local LLM). | Product/support requirement for automated Q&A on orders, shipping, returns. |
+| PE-10 | **Internationalisation (i18n)** | Bilingual UI (Chinese/English) with URL-based language routing (`/en/`, `/zh/` via next-intl). | ✅ Implemented (admin form copy optional follow-up). |
+
+### PE implementation notes (when you pick one up)
+
+Work in vertical slices; each PE item in [TODO.md](TODO.md) expands into concrete sub-tasks. **PE-1 final architecture** (Aspire + YARP + MassTransit + RabbitMQ + Outbox + Saga) **subsumes PE-2, PE-5, and PE-4** for the checkout path. Suggested order:
+
+1. **PE-1 Phase 1–2:** Aspire AppHost, RabbitMQ, Outbox + events (can pilot before full service split). ✅
+2. **PE-1 Phase 3:** Product `StockReservationService` + Redis Redlock on stock consumer. ✅
+3. **PE-1 Phase 4:** `OrderCheckoutStateMachine` + EF saga persistence. ✅
+4. **PE-1 Phase 5:** database-per-service (3 logical DBs) + Product catalog read bridge. ✅
+5. **PE-1 Phase 6:** DLQ alerting (`DeadLetterQueueAlertHostedService`, `GET /api/admin/system/messaging`); 4th cart DB (`novacart_cart`); K8s `ingress.yaml` + `secrets.example.yaml`. ✅
+6. **PE-1 Phase 7:** Jaeger OTLP in Docker; Order microservice `MassTransitEmailQueue`; Testcontainers + admin DLQ UI. ✅
+7. **PE-1 Phase 8:** Refit catalog client; AppHost 4 DB; prod compose + K8s probes; gateway route tests. ✅
+8. **PE-1 seal:** Stripe refund; saga integration tests; E2E smoke script; [DATABASE-PER-SERVICE.md](docs/DATABASE-PER-SERVICE.md). ✅ — **PE-1 production-ready for dev/staging.**
+3. **PE-3** (ElasticSearch) is independent — replaces `ProductService` search path.
+4. **PE-6** (Redis cart) optional without full PE-1 if staying monolith.
+5. **PE-9 / PE-10** are product-driven; PE-10 i18n ✅ done.
+
+#### Per-phase test gate (do not skip the check; only add tests when warranted)
+
+At the **end of each PE phase**, ask:
+
+| Question | If yes → add tests | If no → skip |
+|---|---|---|
+| Did user-facing API contracts or HTTP behaviour change? | Extend `IntegrationTests` / controller tests | — |
+| Did frontend call paths, payloads, or error handling change? | Vitest / RTL for affected modules | — |
+| Is new infra the **primary** runtime (replacing monolith in CI/Docker)? | Gateway routing + multi-service smoke tests (TestHost or compose) | — |
+| Is it wiring-only (copied controllers, DI bootstrap, AppHost manifest) with logic still in `Novacart.Core`? | Existing **130** backend unit/integration tests still cover Core | No new suite yet |
+
+**Do not** duplicate tests for code moved unchanged into `Novacart.Core` or copied controllers — the monolith `WebApplicationFactory` suite in [backend.Tests/](backend.Tests/) remains the regression baseline until microservices become the default deploy target.
+
+#### PE-1 Phase 1–5 status (2026-07-16)
+
+**Code (Docker default):** `docker compose up` runs Gateway + 4 services + RabbitMQ + multi-DB migrate. Databases: **`novacart_auth`**, **`novacart_product`**, **`novacart_commerce`** (cart + order). Cart/Order read product catalog via **`ProductReadDbContext`**. Checkout saga + Product Redlock via enriched **`PaymentCompleted`** (stock lines). K8s skeleton: [`k8s/microservices.yaml`](k8s/microservices.yaml).
+
+**Tests for Phase 1–2 — not required now** (see per-phase test gate above). Add Gateway/Saga tests when CI runs compose E2E.
 
 ---
 
@@ -563,4 +603,4 @@ Recorded so the roadmap is complete; do **not** start these during P2/P3.
 
 **Verification rules:**
 1. Use Docker for all builds/tests. Reconfirm **130/130** backend and **24/24** frontend before treating any change as verified.
-2. P1, P2, and P3 are all complete — the only remaining work is the "Planned Enhancements" scaling tail (§11), which is intentionally out of scope.
+2. P1, P2, and P3 are all complete — the only remaining work is the Planned Enhancements scaling tail (§11, **[TODO.md](TODO.md)**), which is intentionally out of scope.

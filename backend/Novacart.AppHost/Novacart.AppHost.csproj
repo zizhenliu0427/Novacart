@@ -1,0 +1,25 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.4.6">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UserSecretsId>8619ad06-3a83-435c-9b46-9fe154d8a968</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Novacart.Gateway\Novacart.Gateway.csproj" />
+    <ProjectReference Include="..\Services\Novacart.Auth.Api\Novacart.Auth.Api.csproj" />
+    <ProjectReference Include="..\Services\Novacart.Product.Api\Novacart.Product.Api.csproj" />
+    <ProjectReference Include="..\Services\Novacart.Cart.Api\Novacart.Cart.Api.csproj" />
+    <ProjectReference Include="..\Services\Novacart.Order.Api\Novacart.Order.Api.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.4.6" />
+    <PackageReference Include="Aspire.Hosting.Redis" Version="13.4.6" />
+    <PackageReference Include="Aspire.Hosting.RabbitMQ" Version="13.4.6" />
+  </ItemGroup>
+
+</Project>

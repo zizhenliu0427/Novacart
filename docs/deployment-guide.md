@@ -99,6 +99,26 @@ See [`.env.example`](../.env.example) for the complete list. Critical variables:
 | `SMTP_HOST` | ✅ | SMTP server for order emails |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | ✅ | SMTP credentials |
 | `SQUARE_ACCESS_TOKEN` | Optional | Square API for catalogue sync |
+| `Aws__S3__Bucket` | Dev / Prod | S3 bucket name for product images |
+| `Aws__S3__ServiceUrl` | Dev only | Set to `http://localstack:4566` for LocalStack; **unset in production** to use real AWS |
+| `Aws__S3__PublicBaseUrl` | Optional | Stable public URL prefix (e.g. CloudFront origin) |
+
+---
+
+## Local development — S3 / LocalStack
+
+The default `docker-compose.yml` includes **LocalStack** (port `4566`) and runs `localstack/init-s3-bucket.sh` on startup to create the `novacart-product-images` bucket. No AWS account is needed for local admin image uploads.
+
+Backend configuration (also in `backend/appsettings.json`):
+
+```env
+Aws__S3__Bucket=novacart-product-images
+Aws__S3__ServiceUrl=http://localstack:4566
+Aws__S3__ForcePathStyle=true
+Aws__S3__PublicBaseUrl=http://localhost:4566/novacart-product-images
+```
+
+**Production:** remove or leave `Aws__S3__ServiceUrl` empty so `S3StorageService` uses the AWS SDK default credential chain (IAM role / env keys) against real S3.
 
 ---
 

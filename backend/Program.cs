@@ -12,6 +12,7 @@ using Novacart.Api.Models.Entities;
 using Novacart.Api.Services;
 using StackExchange.Redis;
 
+using Novacart.Api.Services.Catalog;
 using Novacart.Api.Services.Payments;
 using Stripe;
 
@@ -42,6 +43,8 @@ builder.Services.AddScoped<IProductService, Novacart.Api.Services.ProductService
 builder.Services.AddScoped<IAdminProductService, AdminProductService>();
 builder.Services.AddScoped<IAdminOrderService, AdminOrderService>();
 builder.Services.AddScoped<IPriceRuleService, PriceRuleService>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IProductCatalogStore, DbProductCatalogStore>();
 builder.Services.AddScoped<ICartService, CartService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<IPaymentStrategy, StripePaymentStrategy>();
@@ -60,6 +63,12 @@ builder.Services.AddScoped<IAddressService, AddressService>();
 builder.Services.AddScoped<ISquareCatalogueGateway, SquareCatalogueGateway>();
 builder.Services.AddScoped<ISquareCatalogueService, SquareCatalogueService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+
+// Exchange rates (Frankfurter API, Redis-cached)
+builder.Services.AddHttpClient<ICurrencyService, CurrencyService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
 
 // Async email queue: producers enqueue, EmailBackgroundWorker drains and sends.
 builder.Services.AddSingleton<EmailQueue>();

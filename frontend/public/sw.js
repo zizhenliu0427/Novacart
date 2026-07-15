@@ -3,7 +3,8 @@ const ASSETS = [
   '/',
   '/manifest.json',
   '/icon.svg',
-  '/offline'
+  '/en/offline',
+  '/zh/offline'
 ];
 
 self.addEventListener('install', (e) => {
@@ -38,9 +39,10 @@ self.addEventListener('fetch', (e) => {
         }
         return networkResponse;
       }).catch(() => {
-        // Navigation requests offline fallback
         if (e.request.mode === 'navigate') {
-          return caches.match('/offline');
+          return caches.match('/en/offline').then((offline) =>
+            offline || caches.match('/zh/offline')
+          );
         }
         return cachedResponse;
       });

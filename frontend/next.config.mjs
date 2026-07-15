@@ -1,10 +1,14 @@
+import createNextIntlPlugin from 'next-intl/plugin';
+
 /** @type {import('next').NextConfig} */
 
-// In Docker the backend is reachable by service name; for local `next dev` it's on
-// localhost. Override explicitly with BACKEND_ORIGIN if needed.
+// In Docker (microservices) the API gateway is reachable as `gateway:8080`.
+// Monolith compose uses `backend:5000`. Override with BACKEND_ORIGIN when building/running.
 const backendOrigin =
   process.env.BACKEND_ORIGIN ||
-  (process.env.NODE_ENV === 'production' ? 'http://backend:5000' : 'http://localhost:5000');
+  (process.env.NODE_ENV === 'production' ? 'http://gateway:8080' : 'http://localhost:5000');
+
+const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 
 const nextConfig = {
   async rewrites() {
@@ -17,4 +21,4 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+export default withNextIntl(nextConfig);

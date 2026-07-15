@@ -1,0 +1,41 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=localhost;Port=5432;Database=novacart;Username=postgres;Password=postgres",
+    "Redis": "localhost:6379",
+    "RabbitMQ": "amqp://guest:guest@localhost:5672"
+  },
+  "Jwt": {
+    "Secret": "your-super-secret-key-change-in-production-at-least-32-chars",
+    "Issuer": "novacart",
+    "Audience": "novacart",
+    "AccessTokenMinutes": 15,
+    "RefreshTokenDays": 7
+  },
+  "Stripe": {
+    "SecretKey": "sk_test_placeholder",
+    "PublishableKey": "pk_test_placeholder",
+    "WebhookSecret": "whsec_placeholder"
+  },
+  "Square": {
+    "AccessToken": "placeholder",
+    "Environment": "sandbox"
+  },
+  "Aws": {
+    "S3": {
+      "Bucket": "novacart-product-images",
+      "Region": "us-east-1",
+      "ServiceUrl": "http://localhost:4566",
+      "AccessKey": "test",
+      "SecretKey": "test",
+      "ForcePathStyle": true,
+      "PublicBaseUrl": "http://localhost:4566/novacart-product-images"
+    }
+  },
+  "AllowedHosts": "*"
+}

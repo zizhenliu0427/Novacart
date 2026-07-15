@@ -1,13 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+import { Link, useRouter } from '@/i18n/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { CartIcon, HeartIcon, HeartFilledIcon } from '@/components/icons';
-import { formatPrice, type Product } from '@/types/product';
+import { useFormatAudPrice } from '@/hooks/useFormatAudPrice';
+import { type Product } from '@/types/product';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/contexts/CartContext';
 import { useWishlist } from '@/contexts/WishlistContext';
@@ -17,6 +18,9 @@ import { useWishlist } from '@/contexts/WishlistContext';
  * product type. Image is a neutral placeholder until real imagery lands.
  */
 export function ProductCard({ product }: { product: Product }) {
+  const t = useTranslations('products');
+  const tc = useTranslations('common');
+  const { formatAud } = useFormatAudPrice();
   const { user } = useAuth();
   const { addItem } = useCart();
   const { isWishlisted, toggle } = useWishlist();
@@ -71,18 +75,18 @@ export function ProductCard({ product }: { product: Product }) {
           )}
           {onSale && (
             <span className="absolute left-3 top-3">
-              <Badge tone="sale">Sale</Badge>
+              <Badge tone="sale">{tc('sale')}</Badge>
             </span>
           )}
           {outOfStock && (
             <span className="absolute right-3 top-3">
-              <Badge tone="danger">Out of stock</Badge>
+              <Badge tone="danger">{tc('outOfStock')}</Badge>
             </span>
           )}
           {/* Wishlist heart toggle */}
           <button
             onClick={handleToggleWishlist}
-            aria-label={wishlisted ? `Remove ${product.name} from wishlist` : `Add ${product.name} to wishlist`}
+            aria-label={wishlisted ? t('removeFromWishlist') : t('addToWishlist')}
             className={`absolute bottom-3 right-3 rounded-full p-1.5 transition ${
               wishlisted
                 ? 'bg-danger/10 text-danger hover:bg-danger/20'
@@ -110,22 +114,22 @@ export function ProductCard({ product }: { product: Product }) {
         <div className="flex items-center justify-between">
           <div className="flex items-baseline gap-2">
             <span className="tnum text-lg font-semibold text-ink">
-              {formatPrice(product.price)}
+              {formatAud(product.price)}
             </span>
             {onSale && (
               <span className="tnum text-sm text-ink-muted line-through">
-                {formatPrice(product.compareAtPrice!)}
+                {formatAud(product.compareAtPrice!)}
               </span>
             )}
           </div>
           <Button
             size="sm"
-            aria-label={`Add ${product.name} to cart`}
+            aria-label={t('addToCart')}
             onClick={handleAddToCart}
             disabled={outOfStock || adding}
           >
             <CartIcon className="h-4 w-4" />
-            {adding ? '…' : 'Add'}
+            {adding ? t('adding') : t('addShort')}
           </Button>
         </div>
       </div>
