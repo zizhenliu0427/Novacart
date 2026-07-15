@@ -169,15 +169,17 @@ Typical **Java / Spring Cloud** mall architecture maps roughly as follows (Novac
 
 ## PE-6 — Cart Optimisation (Redis-backed)
 
+> **Status:** **Complete** (2026-07-16). See [docs/PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md).
+
 **Purpose:** Sub-ms cart reads, cross-device sync, guest-to-user merge.
 
 **Trigger:** PostgreSQL cart path becomes hot or cross-device latency is unacceptable.
 
-- [ ] Cart storage model in Redis (hash or JSON per user/session key)
-- [ ] `CartService` read-through/write-through Redis with Postgres fallback or periodic sync
-- [ ] Preserve guest `SessionId` → `UserId` merge semantics from current P2 implementation
-- [ ] TTL/eviction policy for abandoned guest carts
-- [ ] Invalidate on checkout completion (already clears DB cart today)
+- [x] Cart storage model in Redis (JSON snapshot per user/session key)
+- [x] `CartService` read-through / write-through Redis with Postgres source of truth
+- [x] Preserve guest `SessionId` → `UserId` merge semantics from current P2 implementation
+- [x] TTL/eviction policy for abandoned guest carts (30d guest / 90d user)
+- [x] Invalidate on checkout completion (`ClearCartConsumer` → `ClearCartAsync`)
 
 ---
 

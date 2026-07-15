@@ -18,6 +18,7 @@ using Novacart.Api.Services.Catalog;
 using Novacart.Api.Services.Orders;
 using Novacart.Api.Services.Payments;
 using Novacart.Api.Services.Stock;
+using Novacart.Api.Services.CartRedis;
 using Novacart.Api.Infrastructure.Messaging;
 using Novacart.Api.Search;
 using Novacart.Api.Storage;
@@ -141,6 +142,14 @@ public static class NovacartServiceExtensions
 
     public static IServiceCollection AddNovacartCart(this IServiceCollection services, IConfiguration configuration)
     {
+        services.Configure<CartRedisOptions>(configuration.GetSection(CartRedisOptions.SectionName));
+        services.AddSingleton<ICartRedisStore>(sp =>
+        {
+            var opts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<CartRedisOptions>>().Value;
+            return opts.Enabled
+                ? ActivatorUtilities.CreateInstance<CartRedisStore>(sp)
+                : DisabledCartRedisStore.Instance;
+        });
         services.AddNovacartCatalogSupport(configuration);
         services.AddScoped<ICartService, CartService>();
         services.AddScoped<IWishlistService, WishlistService>();

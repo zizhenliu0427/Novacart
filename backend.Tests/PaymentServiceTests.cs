@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Http;
 using Novacart.Api.Services.Catalog;
+using Novacart.Api.Services.CartRedis;
 
 using Novacart.Api.Models.Dtos.Stock;
 using Novacart.Api.Services.Stock;
@@ -78,7 +79,7 @@ public class PaymentServiceTests
     public async Task ProcessCheckoutAsync_CreatesOrderAndPayment_WhenCartIsValid()
     {
         using var db = TestDbFactory.Create();
-        var cartSvc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db));
+        var cartSvc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db), DisabledCartRedisStore.Instance);
         var paymentSvc = new PaymentService(
             db, _strategyFactory, _orderFactory, new PricingService(), new NullRedisCacheService(), _config,
             new FakeEmailQueue(), NullLogger<PaymentService>.Instance, _services,
@@ -149,7 +150,7 @@ public class PaymentServiceTests
     public async Task ExecutePaymentCompletionAsync_UpdatesStatuses_DecrementsStock_AndClearsCart()
     {
         using var db = TestDbFactory.Create();
-        var cartSvc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db));
+        var cartSvc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db), DisabledCartRedisStore.Instance);
         var paymentSvc = new PaymentService(
             db, _strategyFactory, _orderFactory, new PricingService(), new NullRedisCacheService(), _config,
             new FakeEmailQueue(), NullLogger<PaymentService>.Instance, _services,
@@ -200,7 +201,7 @@ public class PaymentServiceTests
     public async Task ExecutePaymentCompletionAsync_CancelsOrder_WhenStockExhaustedPriorToCompletion()
     {
         using var db = TestDbFactory.Create();
-        var cartSvc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db));
+        var cartSvc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db), DisabledCartRedisStore.Instance);
         var paymentSvc = new PaymentService(
             db, _strategyFactory, _orderFactory, new PricingService(), new NullRedisCacheService(), _config,
             new FakeEmailQueue(), NullLogger<PaymentService>.Instance, _services,

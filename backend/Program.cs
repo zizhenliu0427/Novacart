@@ -47,6 +47,15 @@ builder.Services.AddScoped<IAdminOrderService, AdminOrderService>();
 builder.Services.AddScoped<IPriceRuleService, PriceRuleService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IProductCatalogStore, DbProductCatalogStore>();
+builder.Services.Configure<Novacart.Api.Infrastructure.CartRedisOptions>(
+    builder.Configuration.GetSection(Novacart.Api.Infrastructure.CartRedisOptions.SectionName));
+builder.Services.AddSingleton<Novacart.Api.Services.CartRedis.ICartRedisStore>(sp =>
+{
+    var opts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Novacart.Api.Infrastructure.CartRedisOptions>>().Value;
+    return opts.Enabled
+        ? ActivatorUtilities.CreateInstance<Novacart.Api.Services.CartRedis.CartRedisStore>(sp)
+        : Novacart.Api.Services.CartRedis.DisabledCartRedisStore.Instance;
+});
 builder.Services.AddScoped<ICartService, CartService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<IPaymentStrategy, StripePaymentStrategy>();

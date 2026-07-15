@@ -1,6 +1,8 @@
 using Xunit;
 using FluentAssertions;
+using Novacart.Api.Data;
 using Novacart.Api.Services;
+using Novacart.Api.Services.CartRedis;
 using Novacart.Api.Models.Entities;
 using Novacart.Api.Models.Dtos.Cart;
 using Microsoft.EntityFrameworkCore;
@@ -13,11 +15,14 @@ namespace Novacart.Api.Tests;
 /// </summary>
 public class CartServiceTests
 {
+    private static CartService CreateService(AppDbContext db) =>
+        new(db, new PricingService(), new DbProductCatalogStoreAdapter(db), DisabledCartRedisStore.Instance);
+
     [Fact]
     public async Task GetCartAsync_ReturnsEmptyCart_WhenCartDoesNotExist()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db));
+        var svc = CreateService(db);
         var userId = await TestDbFactory.SeedTestUserAsync(db);
 
         var cart = await svc.GetCartAsync(userId);
@@ -32,7 +37,7 @@ public class CartServiceTests
     public async Task AddItemAsync_AddsNewItem_WhenCartIsEmpty()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db));
+        var svc = CreateService(db);
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
 
@@ -56,7 +61,7 @@ public class CartServiceTests
     public async Task AddItemAsync_MergesQuantity_WhenItemAlreadyInCart()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db));
+        var svc = CreateService(db);
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
 
@@ -75,7 +80,7 @@ public class CartServiceTests
     public async Task AddItemAsync_ThrowsAppException_WhenProductDoesNotExist()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db));
+        var svc = CreateService(db);
         var userId = await TestDbFactory.SeedTestUserAsync(db);
 
         var act = () => svc.AddItemAsync(userId, new AddCartItemRequest { ProductId = Guid.NewGuid(), Quantity = 1 });
@@ -87,7 +92,7 @@ public class CartServiceTests
     public async Task AddItemAsync_ThrowsAppException_WhenProductIsInactive()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db));
+        var svc = CreateService(db);
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
 
@@ -103,7 +108,7 @@ public class CartServiceTests
     public async Task AddItemAsync_ThrowsAppException_WhenExceedsStockQuantity()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db));
+        var svc = CreateService(db);
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
 
@@ -121,7 +126,7 @@ public class CartServiceTests
     public async Task AddItemAsync_ThrowsAppException_WhenMergedQuantityExceedsStock()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db));
+        var svc = CreateService(db);
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
 
@@ -141,7 +146,7 @@ public class CartServiceTests
     public async Task UpdateItemAsync_UpdatesQuantity()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db));
+        var svc = CreateService(db);
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
 
@@ -158,7 +163,7 @@ public class CartServiceTests
     public async Task UpdateItemAsync_RemovesItem_WhenQuantityIsZero()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db));
+        var svc = CreateService(db);
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
 
@@ -174,7 +179,7 @@ public class CartServiceTests
     public async Task UpdateItemAsync_ThrowsAppException_WhenQuantityExceedsStock()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db));
+        var svc = CreateService(db);
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
 
@@ -193,7 +198,7 @@ public class CartServiceTests
     public async Task RemoveItemAsync_RemovesItemSuccessfully()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db));
+        var svc = CreateService(db);
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
 
@@ -209,7 +214,7 @@ public class CartServiceTests
     public async Task ClearCartAsync_WipesAllItems()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db));
+        var svc = CreateService(db);
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         
         var products = await db.Products.Take(2).ToListAsync();
@@ -227,7 +232,7 @@ public class CartServiceTests
     public async Task GuestCartOperations_WorkCorrectly()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db));
+        var svc = CreateService(db);
         var sessionId = "guest_session_123";
         var product = await TestDbFactory.GetFirstProductAsync(db);
 
@@ -254,7 +259,7 @@ public class CartServiceTests
     public async Task MergeGuestCartAsync_MergesItems_AndWipesGuestCart()
     {
         using var db = TestDbFactory.Create();
-        var svc = new CartService(db, new PricingService(), new DbProductCatalogStoreAdapter(db));
+        var svc = CreateService(db);
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var sessionId = "guest_session_456";
 
