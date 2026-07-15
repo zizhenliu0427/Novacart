@@ -13,6 +13,7 @@ public class ProductListItemDto
     public string? CategoryName { get; set; }
     public int? CategoryId { get; set; }
     public string[] Tags { get; set; } = Array.Empty<string>();
+    public string? ImageUrl { get; set; }
 }
 
 /// <summary>Full product detail including metadata (type-specific attributes).</summary>

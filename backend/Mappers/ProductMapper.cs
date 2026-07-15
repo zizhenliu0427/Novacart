@@ -23,6 +23,7 @@ public static class ProductMapper
             CategoryId    = product.CategoryId,
             CategoryName  = product.Category?.Name,
             Tags          = product.Tags,
+            ImageUrl      = product.ImageUrl,
         };
     }
 
@@ -41,6 +42,7 @@ public static class ProductMapper
             CategoryName  = product.Category?.Name,
             Tags          = product.Tags,
             Metadata      = product.Metadata,
+            ImageUrl      = product.ImageUrl,
         };
     }
 }

@@ -15,6 +15,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useWishlist } from '@/contexts/WishlistContext';
 import { useCart } from '@/contexts/CartContext';
+import { apiCall } from '@/lib/api';
 
 function WishlistButton({ productId, productName }: { productId: string; productName: string }) {
   const { user } = useAuth();
@@ -47,13 +48,9 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
   const [addedFeedback, setAddedFeedback] = useState(false);
 
   useEffect(() => {
-    fetch(`/api/products/${params.id}`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`Request failed (${res.status})`);
-        return res.json();
-      })
+    apiCall<Product>(`/api/products/${params.id}`)
       .then(setProduct)
-      .catch((err) => setError(err.message))
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false));
   }, [params.id]);
 
@@ -101,11 +98,19 @@ export default function ProductDetailPage({ params }: { params: { id: string } }
 
       {product && !loading && (
         <div className="grid gap-8 lg:grid-cols-2">
-          {/* Image placeholder */}
-          <div className="flex aspect-square items-center justify-center rounded-xl border border-border bg-bg-subtle">
-            <span className="select-none text-8xl font-semibold text-ink-muted/30">
-              {product.name.charAt(0)}
-            </span>
+          {/* Product Image */}
+          <div className="relative flex aspect-square items-center justify-center rounded-xl border border-border bg-bg-subtle overflow-hidden">
+            {product.imageUrl ? (
+              <img
+                src={product.imageUrl}
+                alt={product.name}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <span className="select-none text-8xl font-semibold text-ink-muted/30">
+                {product.name.charAt(0)}
+              </span>
+            )}
           </div>
 
           {/* Info */}

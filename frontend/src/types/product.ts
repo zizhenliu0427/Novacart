@@ -13,6 +13,7 @@ export interface Product {
   compareAtPrice?: number;
   /** Raw JSON string from the DB — rendered as a dynamic attribute table. */
   metadata?: string;
+  imageUrl?: string;
 }
 
 export interface PagedResult<T> {
@@ -45,6 +46,7 @@ export interface AdminProductRequest {
   categoryId?: number;
   tags: string[];
   metadata?: string;
+  imageUrl?: string;
   isActive: boolean;
 }
 

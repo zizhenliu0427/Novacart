@@ -47,5 +47,8 @@ public sealed class AdminProductUpsertRequest
     [StringLength(50000)]
     public string? Metadata { get; set; }
 
+    [Url, StringLength(1000)]
+    public string? ImageUrl { get; set; }
+
     public bool IsActive { get; set; } = true;
 }

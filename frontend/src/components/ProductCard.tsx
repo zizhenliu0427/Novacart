@@ -57,10 +57,18 @@ export function ProductCard({ product }: { product: Product }) {
   return (
     <Card interactive className="flex flex-col overflow-hidden">
       <Link href={`/products/${product.id}`} className="flex flex-1 flex-col">
-        <div className="relative flex aspect-square items-center justify-center bg-bg-subtle">
-          <span className="select-none text-3xl font-semibold text-ink-muted/50">
-            {product.name.charAt(0)}
-          </span>
+        <div className="relative flex aspect-square items-center justify-center bg-bg-subtle overflow-hidden">
+          {product.imageUrl ? (
+            <img
+              src={product.imageUrl}
+              alt={product.name}
+              className="h-full w-full object-cover transition-transform duration-300 hover:scale-105"
+            />
+          ) : (
+            <span className="select-none text-3xl font-semibold text-ink-muted/50">
+              {product.name.charAt(0)}
+            </span>
+          )}
           {onSale && (
             <span className="absolute left-3 top-3">
               <Badge tone="sale">Sale</Badge>

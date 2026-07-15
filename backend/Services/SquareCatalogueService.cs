@@ -217,9 +217,9 @@ public class SquareCatalogueService : ISquareCatalogueService
 
         var mockProducts = new[]
         {
-            new { Name = "Square Premium Headphones", Slug = "square-premium-headphones", Price = 249.99m, Desc = "High fidelity sound from Square Catalog sandbox sync." },
-            new { Name = "Square Mechanical Keyboard", Slug = "square-mechanical-keyboard", Price = 129.99m, Desc = "Tactile typing experience from Square Catalog sandbox sync." },
-            new { Name = "Square Ergonomic Mouse", Slug = "square-ergonomic-mouse", Price = 79.99m, Desc = "Comfortable office design from Square Catalog sandbox sync." }
+            new { Name = "Square Premium Headphones", Slug = "square-premium-headphones", Price = 249.99m, Desc = "High fidelity sound from Square Catalog sandbox sync.", ImageUrl = "https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=500&auto=format&fit=crop&q=60" },
+            new { Name = "Square Mechanical Keyboard", Slug = "square-mechanical-keyboard", Price = 129.99m, Desc = "Tactile typing experience from Square Catalog sandbox sync.", ImageUrl = "https://images.unsplash.com/photo-1618384887929-16ec33fab9ef?w=500&auto=format&fit=crop&q=60" },
+            new { Name = "Square Ergonomic Mouse", Slug = "square-ergonomic-mouse", Price = 79.99m, Desc = "Comfortable office design from Square Catalog sandbox sync.", ImageUrl = "https://images.unsplash.com/photo-1615663245857-ac93bb7c39e7?w=500&auto=format&fit=crop&q=60" }
         };
 
         foreach (var mock in mockProducts)
@@ -230,6 +230,7 @@ public class SquareCatalogueService : ISquareCatalogueService
                 existing.Name = mock.Name;
                 existing.Price = mock.Price;
                 existing.Description = mock.Desc;
+                existing.ImageUrl = mock.ImageUrl;
                 existing.CategoryId = category.Id;
                 existing.UpdatedAt = DateTime.UtcNow;
                 _db.Products.Update(existing);
@@ -246,6 +247,7 @@ public class SquareCatalogueService : ISquareCatalogueService
                     Currency = "AUD",
                     StockQuantity = 20,
                     CategoryId = category.Id,
+                    ImageUrl = mock.ImageUrl,
                     Metadata = "{\"square_id\": \"mock_square_id\"}"
                 };
                 _db.Products.Add(newProd);

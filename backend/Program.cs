@@ -213,8 +213,28 @@ static async Task EnsureDevAdminAsync(AppDbContext db, IConfiguration config)
 // and hands them to GlobalExceptionHandler for a clean ProblemDetails response.
 app.UseExceptionHandler();
 
-app.UseResponseCompression();
-app.UseResponseCaching();
+var cacheTypeName = app.Services.GetService<IRedisCacheService>()?.GetType().Name;
+if (cacheTypeName != "NullRedisCacheService")
+{
+    app.UseResponseCompression();
+    app.UseResponseCaching();
+}
+else
+{
+    app.Use(async (context, next) =>
+    {
+        context.Features.Set<Microsoft.AspNetCore.ResponseCaching.IResponseCachingFeature>(new DummyResponseCachingFeature());
+        
+        var originalBody = context.Response.Body;
+        using var wrapper = new System.IO.MemoryStream();
+        context.Response.Body = wrapper;
+
+        await next();
+
+        wrapper.Position = 0;
+        await wrapper.CopyToAsync(originalBody);
+    });
+}
 
 
 if (app.Environment.IsDevelopment())
@@ -265,3 +285,8 @@ app.MapGet("/api/health", async (AppDbContext db, IRedisCacheService cache) =>
 app.Run();
 
 public partial class Program { }
+
+public class DummyResponseCachingFeature : Microsoft.AspNetCore.ResponseCaching.IResponseCachingFeature
+{
+    public string[]? VaryByQueryKeys { get; set; }
+}

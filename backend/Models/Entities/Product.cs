@@ -29,6 +29,8 @@ public class Product
     /// <summary>Product-type-specific fields as raw JSON (Postgres jsonb).</summary>
     public string? Metadata { get; set; }
 
+    public string? ImageUrl { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

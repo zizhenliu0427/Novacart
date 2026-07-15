@@ -2,7 +2,8 @@ const CACHE_NAME = 'novacart-cache-v1';
 const ASSETS = [
   '/',
   '/manifest.json',
-  '/icon.svg'
+  '/icon.svg',
+  '/offline'
 ];
 
 self.addEventListener('install', (e) => {
@@ -37,6 +38,10 @@ self.addEventListener('fetch', (e) => {
         }
         return networkResponse;
       }).catch(() => {
+        // Navigation requests offline fallback
+        if (e.request.mode === 'navigate') {
+          return caches.match('/offline');
+        }
         return cachedResponse;
       });
     })

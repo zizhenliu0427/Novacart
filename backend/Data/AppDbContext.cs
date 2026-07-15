@@ -317,6 +317,7 @@ public class AppDbContext : DbContext
                 CategoryId = 1, IsActive = true, CreatedAt = now, UpdatedAt = now,
                 Tags = new[] { "audio", "wireless", "noise-cancelling", "bluetooth" },
                 Metadata = """{"brand":"SoundPro","connectivity":"Bluetooth 5.3","battery_hours":30,"weight_g":250,"color":"Midnight Black","frequency_response":"20Hz–20kHz","driver_size_mm":40}""",
+                ImageUrl = "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500&auto=format&fit=crop&q=60",
             },
             new Product
             {
@@ -328,6 +329,7 @@ public class AppDbContext : DbContext
                 CategoryId = 1, IsActive = true, CreatedAt = now, UpdatedAt = now,
                 Tags = new[] { "monitor", "ultrawide", "gaming", "usb-c" },
                 Metadata = """{"brand":"ViewMax","resolution":"3440x1440","refresh_rate_hz":144,"panel_type":"IPS","response_time_ms":1,"ports":"2x HDMI, 1x DisplayPort, 2x USB-C","size_inches":34}""",
+                ImageUrl = "https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=500&auto=format&fit=crop&q=60",
             },
             new Product
             {
@@ -339,6 +341,7 @@ public class AppDbContext : DbContext
                 CategoryId = 1, IsActive = true, CreatedAt = now, UpdatedAt = now,
                 Tags = new[] { "keyboard", "mechanical", "rgb", "gaming", "compact" },
                 Metadata = """{"brand":"KeyForge","layout":"TKL (80%)","switch_type":"Cherry MX Red","backlight":"Per-key RGB","connectivity":"USB-C detachable","material":"Aluminium top plate","hot_swap":true}""",
+                ImageUrl = "https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=500&auto=format&fit=crop&q=60",
             },
 
             // ── Apparel ────────────────────────────────────────
@@ -352,6 +355,7 @@ public class AppDbContext : DbContext
                 CategoryId = 2, IsActive = true, CreatedAt = now, UpdatedAt = now,
                 Tags = new[] { "wool", "merino", "knitwear", "sustainable", "unisex" },
                 Metadata = """{"material":"100% Australian Merino Wool","sizes":["XS","S","M","L","XL","XXL"],"colors":["Oatmeal","Navy","Forest Green","Charcoal"],"fit":"Regular","care":"Machine wash cold, lay flat to dry","origin":"Australia"}""",
+                ImageUrl = "https://images.unsplash.com/photo-1614975058789-41316d0e2e9c?w=500&auto=format&fit=crop&q=60",
             },
             new Product
             {
@@ -363,6 +367,7 @@ public class AppDbContext : DbContext
                 CategoryId = 2, IsActive = true, CreatedAt = now, UpdatedAt = now,
                 Tags = new[] { "pants", "chino", "slim-fit", "smart-casual" },
                 Metadata = """{"material":"97% Cotton, 3% Elastane","sizes":["28","30","32","34","36","38"],"inseam_options":["30\"","32\"","34\""],"colors":["Stone","Navy","Olive","Charcoal"],"fit":"Slim","care":"Machine wash 30°C"}""",
+                ImageUrl = "https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?w=500&auto=format&fit=crop&q=60",
             },
 
             // ── Home & Living ──────────────────────────────────
@@ -376,6 +381,7 @@ public class AppDbContext : DbContext
                 CategoryId = 3, IsActive = true, CreatedAt = now, UpdatedAt = now,
                 Tags = new[] { "candle", "soy-wax", "gift", "scented", "handmade" },
                 Metadata = """{"wax_type":"100% natural soy","burn_time_hours":35,"scents":["Cedar & Amber","Linen & Sea Salt","Bergamot & White Tea"],"container":"Glass tumbler","weight_g":200,"wick":"Cotton braided","quantity_in_pack":3}""",
+                ImageUrl = "https://images.unsplash.com/photo-1603006905003-be475563bc59?w=500&auto=format&fit=crop&q=60",
             },
             new Product
             {
@@ -387,6 +393,7 @@ public class AppDbContext : DbContext
                 CategoryId = 3, IsActive = true, CreatedAt = now, UpdatedAt = now,
                 Tags = new[] { "wood", "walnut", "kitchen", "serving", "handmade", "sustainable" },
                 Metadata = """{"material":"Solid Australian Black Walnut","dimensions_cm":"40 x 25 x 2","finish":"Food-safe mineral oil","features":["Juice groove","Hanging hole"],"care":"Hand wash only, re-oil monthly","origin":"Australia"}""",
+                ImageUrl = "https://images.unsplash.com/photo-1587314168485-3236d6710814?w=500&auto=format&fit=crop&q=60",
             },
             new Product
             {
@@ -398,6 +405,7 @@ public class AppDbContext : DbContext
                 CategoryId = 3, IsActive = true, CreatedAt = now, UpdatedAt = now,
                 Tags = new[] { "linen", "bedding", "duvet", "sustainable", "french-linen" },
                 Metadata = """{"material":"100% French Linen","size":"Queen (210x210cm)","colors":["White","Sage","Dusk Blue","Natural"],"thread_count":"N/A (woven linen)","care":"Machine wash 40°C, tumble dry low","pillowcases_included":2}""",
+                ImageUrl = "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?w=500&auto=format&fit=crop&q=60",
             },
 
             // ── Accessories ────────────────────────────────────
@@ -411,6 +419,7 @@ public class AppDbContext : DbContext
                 CategoryId = 4, IsActive = true, CreatedAt = now, UpdatedAt = now,
                 Tags = new[] { "leather", "wallet", "accessories", "rfid", "handmade" },
                 Metadata = """{"material":"Full-grain cowhide leather","card_slots":6,"has_bill_compartment":true,"rfid_blocking":true,"colors":["Tan","Dark Brown","Black"],"dimensions_cm":"9.5 x 11 (open)","weight_g":65}""",
+                ImageUrl = "https://images.unsplash.com/photo-1627124118303-624c8f5d224d?w=500&auto=format&fit=crop&q=60",
             },
             new Product
             {
@@ -422,6 +431,7 @@ public class AppDbContext : DbContext
                 CategoryId = 4, IsActive = true, CreatedAt = now, UpdatedAt = now,
                 Tags = new[] { "tote", "canvas", "sustainable", "laptop", "everyday" },
                 Metadata = """{"material":"12oz natural cotton canvas","laptop_sleeve":"Up to 14\"","internal_pockets":2,"external_pockets":1,"shoulder_strap_drop_cm":28,"capacity_litres":20,"colors":["Natural","Black","Olive"]}""",
+                ImageUrl = "https://images.unsplash.com/photo-1544816155-12df9643f363?w=500&auto=format&fit=crop&q=60",
             },
 
             // ── Books ──────────────────────────────────────────
@@ -435,6 +445,7 @@ public class AppDbContext : DbContext
                 CategoryId = 5, IsActive = true, CreatedAt = now, UpdatedAt = now,
                 Tags = new[] { "programming", "software", "career", "bestseller" },
                 Metadata = """{"author":"David Thomas, Andrew Hunt","publisher":"Pragmatic Bookshelf","edition":"20th Anniversary","pages":352,"isbn":"978-0135957059","format":["Paperback","eBook"],"language":"English","year":2019}""",
+                ImageUrl = "https://images.unsplash.com/photo-1629654297299-c8506221ca97?w=500&auto=format&fit=crop&q=60",
             },
             new Product
             {
@@ -446,6 +457,7 @@ public class AppDbContext : DbContext
                 CategoryId = 5, IsActive = true, CreatedAt = now, UpdatedAt = now,
                 Tags = new[] { "self-help", "habits", "productivity", "bestseller" },
                 Metadata = """{"author":"James Clear","publisher":"Random House Business","pages":320,"isbn":"978-1847941831","format":["Paperback","Hardcover","eBook","Audiobook"],"language":"English","year":2018}""",
+                ImageUrl = "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=500&auto=format&fit=crop&q=60",
             }
         );
     }

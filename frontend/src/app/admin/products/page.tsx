@@ -29,6 +29,7 @@ interface ProductFormState {
   categoryId: string;
   tags: string;
   metadata: string;
+  imageUrl: string;
   isActive: boolean;
 }
 
@@ -42,6 +43,7 @@ const EMPTY_FORM: ProductFormState = {
   categoryId: '',
   tags: '',
   metadata: '',
+  imageUrl: '',
   isActive: true,
 };
 
@@ -64,6 +66,7 @@ function toForm(product: AdminProduct): ProductFormState {
     categoryId: product.categoryId ? String(product.categoryId) : '',
     tags: product.tags.join(', '),
     metadata: product.metadata ?? '',
+    imageUrl: product.imageUrl ?? '',
     isActive: product.isActive,
   };
 }
@@ -202,6 +205,7 @@ export default function AdminProductsPage() {
       categoryId: form.categoryId ? Number(form.categoryId) : undefined,
       tags: form.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
       metadata: form.metadata.trim() || undefined,
+      imageUrl: form.imageUrl.trim() || undefined,
       isActive: form.isActive,
     };
 
@@ -444,6 +448,14 @@ export default function AdminProductsPage() {
                 value={form.tags}
                 onChange={(event) => setForm((value) => ({ ...value, tags: event.target.value }))}
                 helperText="Comma-separated, for example: monitor, gaming, usb-c"
+              />
+
+              <Input
+                label="Image URL"
+                type="url"
+                value={form.imageUrl}
+                onChange={(event) => setForm((value) => ({ ...value, imageUrl: event.target.value }))}
+                helperText="URL to product photo (e.g. Unsplash URL)"
               />
 
               <div className="space-y-1.5">

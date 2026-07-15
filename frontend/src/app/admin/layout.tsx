@@ -26,6 +26,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   const isAdmin = !!user?.roles?.some((r) => r === 'admin' || r === 'sysadmin');
+  const isSysAdmin = !!user?.roles?.some((r) => r === 'sysadmin');
+
   if (!isAdmin) {
     return (
       <EmptyState
@@ -36,9 +38,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     );
   }
 
+  const visibleLinks = isSysAdmin
+    ? [...links, { href: '/admin/system', label: 'System' }]
+    : links;
+
   const navContent = (
     <nav className="flex flex-col gap-1 text-sm">
-      {links.map((l) => {
+      {visibleLinks.map((l) => {
         const active = l.href === '/admin' ? pathname === '/admin' : pathname.startsWith(l.href);
         return (
           <Link

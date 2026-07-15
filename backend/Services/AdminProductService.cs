@@ -94,6 +94,7 @@ public sealed class AdminProductService : IAdminProductService
             CategoryId = normalized.CategoryId,
             Tags = normalized.Tags,
             Metadata = normalized.Metadata,
+            ImageUrl = normalized.ImageUrl,
             IsActive = normalized.IsActive,
             CreatedAt = now,
             UpdatedAt = now,
@@ -125,6 +126,7 @@ public sealed class AdminProductService : IAdminProductService
         product.CategoryId = normalized.CategoryId;
         product.Tags = normalized.Tags;
         product.Metadata = normalized.Metadata;
+        product.ImageUrl = normalized.ImageUrl;
         product.IsActive = normalized.IsActive;
         product.UpdatedAt = DateTime.UtcNow;
 
@@ -193,6 +195,7 @@ public sealed class AdminProductService : IAdminProductService
                 .Take(30)
                 .ToArray(),
             Metadata = metadata,
+            ImageUrl = string.IsNullOrWhiteSpace(request.ImageUrl) ? null : request.ImageUrl.Trim(),
             IsActive = request.IsActive,
         };
     }
@@ -229,6 +232,7 @@ public sealed class AdminProductService : IAdminProductService
         CategoryName = p.Category?.Name,
         Tags = p.Tags,
         Metadata = p.Metadata,
+        ImageUrl = p.ImageUrl,
         IsActive = p.IsActive,
         CreatedAt = p.CreatedAt,
         UpdatedAt = p.UpdatedAt,
