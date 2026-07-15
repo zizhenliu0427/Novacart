@@ -181,6 +181,7 @@ public static class NovacartServiceExtensions
         services.AddNovacartCatalogSupport(configuration);
         services.AddNovacartStockHoldGateway(configuration);
         services.AddScoped<IOrderCheckoutCompletionService, OrderCheckoutCompletionService>();
+        services.AddScoped<ICheckoutSagaAdminService, CheckoutSagaAdminService>();
         services.AddScoped<IEmailQueue, MassTransitEmailQueue>();
         services.AddNovacartRabbitMqMonitoring();
         return services;

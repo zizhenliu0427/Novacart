@@ -140,7 +140,7 @@ Typical **Java / Spring Cloud** mall architecture maps roughly as follows (Novac
 
 ## PE-5 — Async Order Processing
 
-> **Status:** Folded into **[PE-1 final architecture](#pe-1--microservices-final-architecture)** via **MassTransit Saga** + Outbox.
+> **Status:** **Complete** — core flow via PE-1 MassTransit Saga + Outbox; admin saga/DLQ retry UI added (2026-07-16).
 
 **Purpose:** Decouple checkout (payment → inventory → email → clear cart).
 
@@ -149,7 +149,7 @@ Typical **Java / Spring Cloud** mall architecture maps roughly as follows (Novac
 - [x] *(Track under PE-1)* `OrderCheckoutSaga` / consumer choreography
 - [x] *(Track under PE-1)* Compensating actions on stock failure (`StockReservationFailed`)
 - [x] *(Track under PE-1)* Idempotency at each stage (`orderId`, pending status checks)
-- [ ] Admin visibility: failed saga / DLQ retry UI (optional)
+- [x] Admin visibility: failed saga / DLQ retry UI
 
 ---
 
@@ -161,7 +161,7 @@ Typical **Java / Spring Cloud** mall architecture maps roughly as follows (Novac
 - [x] Define saga/choreography: `PaymentCompleted` → `ReserveInventory` → `SendConfirmation` → `ClearCart`
 - [x] Implement consumers for each step with compensating actions on failure
 - [x] Ensure idempotency at each stage (order ID as correlation key)
-- [ ] Admin visibility: failed step retry or manual intervention UI (optional)
+- [x] Admin visibility: failed step retry or manual intervention UI
 
 </details>
 

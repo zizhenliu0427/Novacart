@@ -1,5 +1,8 @@
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
+using Novacart.Api.Data;
 using Novacart.Api.Models.Dtos.Products;
+using Novacart.Api.Search;
 using Novacart.Api.Services;
 using Xunit;
 
@@ -7,6 +10,8 @@ namespace Novacart.Api.Tests;
 
 public class AdminProductServiceTests
 {
+    private static AdminProductService CreateService(AppDbContext db) =>
+        new(db, new NullRedisCacheService(), NullProductSearchIndexer.Instance);
     [Fact]
     public async Task GetAllAsync_IncludesInactiveProducts_AndSupportsStatusFilter()
     {
@@ -14,7 +19,7 @@ public class AdminProductServiceTests
         var product = await TestDbFactory.GetFirstProductAsync(db);
         product.IsActive = false;
         await db.SaveChangesAsync();
-        var service = new AdminProductService(db, new NullRedisCacheService());
+        var service = CreateService(db);
 
         var all = await service.GetAllAsync(null, null, 1, 50);
         var inactive = await service.GetAllAsync(null, false, 1, 50);
@@ -27,7 +32,7 @@ public class AdminProductServiceTests
     public async Task GetAllAsync_SearchesNameAndSlugCaseInsensitively()
     {
         using var db = TestDbFactory.Create();
-        var service = new AdminProductService(db, new NullRedisCacheService());
+        var service = CreateService(db);
 
         var result = await service.GetAllAsync("ATOMIC-HABITS", null, 1, 20);
 
@@ -38,7 +43,7 @@ public class AdminProductServiceTests
     public async Task CreateAsync_PersistsAndNormalizesProduct()
     {
         using var db = TestDbFactory.Create();
-        var service = new AdminProductService(db, new NullRedisCacheService());
+        var service = CreateService(db);
         var request = ValidRequest();
         request.Tags = new[] { " New ", "new", "Featured" };
 
@@ -56,7 +61,7 @@ public class AdminProductServiceTests
     public async Task CreateAsync_ThrowsConflict_WhenSlugAlreadyExists()
     {
         using var db = TestDbFactory.Create();
-        var service = new AdminProductService(db, new NullRedisCacheService());
+        var service = CreateService(db);
         var existing = await TestDbFactory.GetFirstProductAsync(db);
         var request = ValidRequest();
         request.Slug = existing.Slug;
@@ -70,7 +75,7 @@ public class AdminProductServiceTests
     public async Task CreateAsync_ThrowsNotFound_WhenCategoryDoesNotExist()
     {
         using var db = TestDbFactory.Create();
-        var service = new AdminProductService(db, new NullRedisCacheService());
+        var service = CreateService(db);
         var request = ValidRequest();
         request.CategoryId = 999;
 
@@ -83,7 +88,7 @@ public class AdminProductServiceTests
     public async Task CreateAsync_RejectsMetadataThatIsNotAJsonObject()
     {
         using var db = TestDbFactory.Create();
-        var service = new AdminProductService(db, new NullRedisCacheService());
+        var service = CreateService(db);
         var request = ValidRequest();
         request.Metadata = "[1, 2, 3]";
 
@@ -97,7 +102,7 @@ public class AdminProductServiceTests
     public async Task UpdateAsync_UpdatesInventoryCategoryAndActiveStatus()
     {
         using var db = TestDbFactory.Create();
-        var service = new AdminProductService(db, new NullRedisCacheService());
+        var service = CreateService(db);
         var existing = await TestDbFactory.GetFirstProductAsync(db);
         var request = ValidRequest();
         request.Name = "Updated Product";
@@ -119,7 +124,7 @@ public class AdminProductServiceTests
     public async Task DeactivateAsync_SoftDeletesProduct()
     {
         using var db = TestDbFactory.Create();
-        var service = new AdminProductService(db, new NullRedisCacheService());
+        var service = CreateService(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
 
         await service.DeactivateAsync(product.Id);
@@ -132,7 +137,7 @@ public class AdminProductServiceTests
     public async Task UpdateAsync_ThrowsNotFound_WhenProductDoesNotExist()
     {
         using var db = TestDbFactory.Create();
-        var service = new AdminProductService(db, new NullRedisCacheService());
+        var service = CreateService(db);
 
         var act = () => service.UpdateAsync(Guid.NewGuid(), ValidRequest());
 

@@ -55,6 +55,7 @@ export default function ProductsPage() {
   const [appliedMinPrice, setAppliedMinPrice] = useState<string>('');
   const [appliedMaxPrice, setAppliedMaxPrice] = useState<string>('');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [searchEngine, setSearchEngine] = useState<string | null>(null);
 
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
@@ -84,6 +85,7 @@ export default function ProductsPage() {
       const data = await apiCall<PagedResult<Product>>(`/api/products?${params}`);
       setProducts(data.items);
       setTotalCount(data.totalCount);
+      setSearchEngine(data.searchEngine ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load products');
     } finally {
@@ -218,6 +220,11 @@ export default function ProductsPage() {
             {loading
               ? 'Loading catalogue…'
               : `${products.length}${totalCount > products.length ? ` of ${totalCount}` : ''} item${products.length === 1 ? '' : 's'}`}
+            {!loading && debouncedQuery && searchEngine && (
+              <span className="ml-2 text-xs text-ink-muted/80">
+                · {searchEngine === 'elasticsearch' ? 'ElasticSearch' : 'Postgres'} search
+              </span>
+            )}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

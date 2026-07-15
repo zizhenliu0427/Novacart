@@ -2,8 +2,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Novacart.Api.Data;
 using Novacart.Api.Infrastructure.Messaging;
+using Novacart.Api.Models.Dtos.Admin;
 using Novacart.Api.Models.Entities;
 using Novacart.Api.Services;
+using Novacart.Api.Services.Orders;
 
 namespace Novacart.Api.Controllers.Admin;
 
@@ -19,17 +21,20 @@ public class AdminSystemController : ControllerBase
     private readonly AppDbContext _db;
     private readonly IRedisCacheService _cache;
     private readonly IRabbitMqMonitoringService _messaging;
+    private readonly ICheckoutSagaAdminService _sagas;
     private readonly ILogger<AdminSystemController> _logger;
 
     public AdminSystemController(
         AppDbContext db,
         IRedisCacheService cache,
         IRabbitMqMonitoringService messaging,
+        ICheckoutSagaAdminService sagas,
         ILogger<AdminSystemController> logger)
     {
         _db = db;
         _cache = cache;
         _messaging = messaging;
+        _sagas = sagas;
         _logger = logger;
     }
 
@@ -91,6 +96,48 @@ public class AdminSystemController : ControllerBase
             ErrorQueues = errorQueues,
             Queues = queues,
         });
+    }
+
+    /// <summary>Lists checkout saga instances (failed or awaiting stock).</summary>
+    [HttpGet("checkout-sagas")]
+    public async Task<ActionResult<CheckoutSagaListResponse>> GetCheckoutSagas(
+        [FromQuery] string? state,
+        [FromQuery] int limit = 50,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _sagas.ListSagasAsync(state, limit, cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>Republishes <see cref="Novacart.Api.Messaging.PaymentCompleted"/> for a stuck pending checkout.</summary>
+    [HttpPost("checkout-sagas/{orderId:guid}/retry")]
+    public async Task<IActionResult> RetryCheckoutSaga(Guid orderId, CancellationToken cancellationToken)
+    {
+        await _sagas.RetryCheckoutAsync(orderId, cancellationToken);
+        return Ok(new { success = true, message = "Checkout retry published." });
+    }
+
+    /// <summary>Moves messages from a MassTransit <c>_error</c> queue back to the source queue.</summary>
+    [HttpPost("messaging/retry-dlq")]
+    public async Task<ActionResult<DlqRetryResponse>> RetryDlq(
+        [FromBody] DlqRetryRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.QueueName))
+            return BadRequest(new { message = "QueueName is required." });
+
+        try
+        {
+            var result = await _messaging.RetryErrorQueueAsync(
+                request.QueueName,
+                request.MaxMessages,
+                cancellationToken);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     /// <summary>

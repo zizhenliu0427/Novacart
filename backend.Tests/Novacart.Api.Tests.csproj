@@ -19,6 +19,8 @@
     <PackageReference Include="MassTransit" Version="8.3.4" />
     <PackageReference Include="Testcontainers" Version="4.1.0" />
     <PackageReference Include="Testcontainers.RabbitMq" Version="4.1.0" />
+    <PackageReference Include="Testcontainers.Elasticsearch" Version="4.1.0" />
+    <PackageReference Include="Testcontainers.Redis" Version="4.1.0" />
   </ItemGroup>
 
   <ItemGroup>

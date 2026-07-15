@@ -17,7 +17,7 @@ public static class MicroserviceBootstrap
         Build(args, b =>
         {
             b.Services.AddNovacartProductDatabase(b.Configuration);
-            b.Services.AddNovacartProduct();
+            b.Services.AddNovacartProduct(b.Configuration);
             MassTransitExtensions.AddNovacartMassTransitForProduct(b.Services, b.Configuration);
         });
 

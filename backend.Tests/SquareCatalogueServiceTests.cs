@@ -1,5 +1,6 @@
 using Xunit;
 using FluentAssertions;
+using Novacart.Api.Search;
 using Novacart.Api.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -28,7 +29,7 @@ public class SquareCatalogueServiceTests
         // Gateway is never invoked on the simulation path; pass a throwing stub to prove it.
         var svc = new SquareCatalogueService(
             db, config, NullLogger<SquareCatalogueService>.Instance,
-            new ThrowingGateway());
+            new ThrowingGateway(), NullProductSearchIndexer.Instance);
 
         // Act
         var result = await svc.SyncProductsAsync();
@@ -61,7 +62,8 @@ public class SquareCatalogueServiceTests
 
         var gateway = new StubGateway();
         var svc = new SquareCatalogueService(
-            db, config, NullLogger<SquareCatalogueService>.Instance, gateway);
+            db, config, NullLogger<SquareCatalogueService>.Instance, gateway,
+            NullProductSearchIndexer.Instance);
 
         // Act
         var result = await svc.SyncProductsAsync();
@@ -109,7 +111,8 @@ public class SquareCatalogueServiceTests
 
         var gateway = new StubGateway();
         var svc = new SquareCatalogueService(
-            db, config, NullLogger<SquareCatalogueService>.Instance, gateway);
+            db, config, NullLogger<SquareCatalogueService>.Instance, gateway,
+            NullProductSearchIndexer.Instance);
 
         // Act — first sync creates, second sync updates
         var first = await svc.SyncProductsAsync();

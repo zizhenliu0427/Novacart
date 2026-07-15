@@ -31,13 +31,40 @@ interface MessagingDiagnosticsResponse {
   queues: RabbitMqQueueInfo[];
 }
 
+interface CheckoutSagaSummary {
+  correlationId: string;
+  orderId: string;
+  currentState: string;
+  orderNumber: string;
+  userId: string;
+  userEmail: string | null;
+  orderStatus: string | null;
+  canRetry: boolean;
+}
+
+interface CheckoutSagaListResponse {
+  timestamp: string;
+  sagas: CheckoutSagaSummary[];
+}
+
+interface DlqRetryResponse {
+  queueName: string;
+  targetQueue: string;
+  messagesRetried: number;
+  message: string;
+}
+
 export default function AdminSystemPage() {
   const { toast } = useToast();
   const [health, setHealth] = useState<SystemHealthResponse | null>(null);
   const [messaging, setMessaging] = useState<MessagingDiagnosticsResponse | null>(null);
+  const [sagas, setSagas] = useState<CheckoutSagaListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [messagingLoading, setMessagingLoading] = useState(true);
+  const [sagasLoading, setSagasLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
+  const [retryingQueue, setRetryingQueue] = useState<string | null>(null);
+  const [retryingSaga, setRetryingSaga] = useState<string | null>(null);
 
   async function fetchHealth() {
     setLoading(true);
@@ -63,6 +90,18 @@ export default function AdminSystemPage() {
     }
   }
 
+  async function fetchSagas() {
+    setSagasLoading(true);
+    try {
+      const data = await apiCall<CheckoutSagaListResponse>('/admin/system/checkout-sagas');
+      setSagas(data);
+    } catch {
+      setSagas(null);
+    } finally {
+      setSagasLoading(false);
+    }
+  }
+
   async function handleClearCache() {
     setClearing(true);
     try {
@@ -76,9 +115,40 @@ export default function AdminSystemPage() {
     }
   }
 
+  async function handleRetryDlq(queueName: string) {
+    setRetryingQueue(queueName);
+    try {
+      const result = await apiCall<DlqRetryResponse>('/admin/system/messaging/retry-dlq', {
+        method: 'POST',
+        body: JSON.stringify({ queueName, maxMessages: 10 }),
+      });
+      toast.success(result.message || `Retried ${result.messagesRetried} message(s).`);
+      await fetchMessaging();
+    } catch {
+      toast.error(`Failed to retry DLQ ${queueName}.`);
+    } finally {
+      setRetryingQueue(null);
+    }
+  }
+
+  async function handleRetrySaga(orderId: string) {
+    setRetryingSaga(orderId);
+    try {
+      await apiCall(`/admin/system/checkout-sagas/${orderId}/retry`, { method: 'POST' });
+      toast.success('Checkout saga retry published.');
+      await fetchSagas();
+      await fetchMessaging();
+    } catch {
+      toast.error('Failed to retry checkout saga.');
+    } finally {
+      setRetryingSaga(null);
+    }
+  }
+
   useEffect(() => {
     fetchHealth();
     fetchMessaging();
+    fetchSagas();
   }, []);
 
   return (
@@ -89,7 +159,6 @@ export default function AdminSystemPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        {/* Connection Diagnostics Card */}
         <Card className="p-6 space-y-6">
           <h2 className="text-lg font-semibold text-ink">Connection diagnostics</h2>
 
@@ -108,8 +177,8 @@ export default function AdminSystemPage() {
                   )}
                 </div>
                 <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                  health.database.connected 
-                    ? 'bg-green-50 text-green-700 dark:bg-green-950/20 dark:text-green-400 border border-green-200 dark:border-green-800' 
+                  health.database.connected
+                    ? 'bg-green-50 text-green-700 dark:bg-green-950/20 dark:text-green-400 border border-green-200 dark:border-green-800'
                     : 'bg-danger/10 text-danger border border-danger/20'
                 }`}>
                   {health.database.connected ? 'Connected' : 'Disconnected'}
@@ -124,8 +193,8 @@ export default function AdminSystemPage() {
                   )}
                 </div>
                 <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                  health.redisCache.connected 
-                    ? 'bg-green-50 text-green-700 dark:bg-green-950/20 dark:text-green-400 border border-green-200 dark:border-green-800' 
+                  health.redisCache.connected
+                    ? 'bg-green-50 text-green-700 dark:bg-green-950/20 dark:text-green-400 border border-green-200 dark:border-green-800'
                     : 'bg-danger/10 text-danger border border-danger/20'
                 }`}>
                   {health.redisCache.connected ? 'Connected' : 'Disconnected'}
@@ -145,7 +214,6 @@ export default function AdminSystemPage() {
           </Button>
         </Card>
 
-        {/* Maintenance Actions Card */}
         <Card className="p-6 space-y-6">
           <div>
             <h2 className="text-lg font-semibold text-ink">Maintenance operations</h2>
@@ -157,9 +225,9 @@ export default function AdminSystemPage() {
             <p className="text-xs text-ink-muted mt-1">
               Flushes list caches, order histories and analytics snapshots. Active customer sessions won&apos;t be invalidated.
             </p>
-            <Button 
-              onClick={handleClearCache} 
-              disabled={clearing} 
+            <Button
+              onClick={handleClearCache}
+              disabled={clearing}
               className="mt-4 w-full bg-accent hover:bg-accent/90"
             >
               {clearing ? 'Flushing cache…' : 'Flush Cache'}
@@ -167,6 +235,64 @@ export default function AdminSystemPage() {
           </div>
         </Card>
       </div>
+
+      <Card className="p-6 space-y-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-ink">Checkout sagas</h2>
+            <p className="text-sm text-ink-muted">Failed or stuck MassTransit checkout state machines (pending orders only).</p>
+          </div>
+          <Button variant="secondary" onClick={fetchSagas} disabled={sagasLoading}>
+            Refresh
+          </Button>
+        </div>
+
+        {sagasLoading ? (
+          <div className="h-24 animate-pulse rounded bg-bg-subtle" />
+        ) : sagas && sagas.sagas.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-ink-muted">
+                  <th className="py-2 pr-4 font-medium">Order</th>
+                  <th className="py-2 pr-4 font-medium">Saga state</th>
+                  <th className="py-2 pr-4 font-medium">Order status</th>
+                  <th className="py-2 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sagas.sagas.map((s) => (
+                  <tr key={s.orderId} className="border-b border-border/60">
+                    <td className="py-2 pr-4 font-mono text-xs">{s.orderNumber}</td>
+                    <td className="py-2 pr-4">
+                      <span className={s.currentState === 'Failed' ? 'text-danger font-medium' : 'text-ink'}>
+                        {s.currentState}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-4 text-ink-muted">{s.orderStatus ?? '—'}</td>
+                    <td className="py-2">
+                      {s.canRetry ? (
+                        <Button
+                          variant="secondary"
+                          className="text-xs"
+                          disabled={retryingSaga === s.orderId}
+                          onClick={() => handleRetrySaga(s.orderId)}
+                        >
+                          {retryingSaga === s.orderId ? 'Retrying…' : 'Retry checkout'}
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-ink-muted">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-sm text-ink-muted">No failed or stuck checkout sagas.</p>
+        )}
+      </Card>
 
       <Card className="p-6 space-y-4">
         <div className="flex items-center justify-between gap-4">
@@ -193,9 +319,21 @@ export default function AdminSystemPage() {
             {messaging.errorQueues.length > 0 ? (
               <ul className="space-y-2 text-sm">
                 {messaging.errorQueues.map((q) => (
-                  <li key={q.name} className="flex justify-between rounded border border-border px-3 py-2 font-mono text-xs">
-                    <span>{q.name}</span>
-                    <span className="text-danger">{q.messages} msg</span>
+                  <li key={q.name} className="flex flex-wrap items-center justify-between gap-2 rounded border border-border px-3 py-2">
+                    <span className="font-mono text-xs">{q.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-danger text-xs">{q.messages} msg</span>
+                      {q.messages > 0 && (
+                        <Button
+                          variant="secondary"
+                          className="text-xs"
+                          disabled={retryingQueue === q.name}
+                          onClick={() => handleRetryDlq(q.name)}
+                        >
+                          {retryingQueue === q.name ? 'Retrying…' : 'Retry DLQ'}
+                        </Button>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -217,4 +355,3 @@ export default function AdminSystemPage() {
     </div>
   );
 }
-

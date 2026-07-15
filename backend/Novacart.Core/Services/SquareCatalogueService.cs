@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Novacart.Api.Data;
 using Novacart.Api.Models.Entities;
+using Novacart.Api.Search;
 using Square;
 using Square.Authentication;
 using Square.Exceptions;
@@ -69,17 +70,20 @@ public class SquareCatalogueService : ISquareCatalogueService
     private readonly Microsoft.Extensions.Configuration.IConfiguration _config;
     private readonly ILogger<SquareCatalogueService> _logger;
     private readonly ISquareCatalogueGateway _gateway;
+    private readonly IProductSearchIndexer _searchIndexer;
 
     public SquareCatalogueService(
         AppDbContext db,
         Microsoft.Extensions.Configuration.IConfiguration config,
         ILogger<SquareCatalogueService> logger,
-        ISquareCatalogueGateway gateway)
+        ISquareCatalogueGateway gateway,
+        IProductSearchIndexer searchIndexer)
     {
         _db = db;
         _config = config;
         _logger = logger;
         _gateway = gateway;
+        _searchIndexer = searchIndexer;
     }
 
     public async Task<SquareSyncResultDto> SyncProductsAsync()
@@ -176,6 +180,7 @@ public class SquareCatalogueService : ISquareCatalogueService
             }
 
             await _db.SaveChangesAsync();
+            await ReindexSearchAsync();
             result.Message = $"Successfully synced products. Created {result.CategoriesCreated} categories, created {result.ProductsCreated} products, updated {result.ProductsUpdated} products.";
             return result;
         }
@@ -256,7 +261,23 @@ public class SquareCatalogueService : ISquareCatalogueService
         }
 
         await _db.SaveChangesAsync();
+        await ReindexSearchAsync();
         result.Message = $"[Simulation Mode] Synced Square sandbox catalogue. Created {result.CategoriesCreated} categories, created {result.ProductsCreated} products, updated {result.ProductsUpdated} products.";
         return result;
+    }
+
+    private async Task ReindexSearchAsync()
+    {
+        if (!_searchIndexer.IsEnabled)
+            return;
+
+        try
+        {
+            await _searchIndexer.ReindexAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Elasticsearch reindex after Square sync failed.");
+        }
     }
 }

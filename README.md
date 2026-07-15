@@ -170,14 +170,31 @@ The P14 spec requires comprehensive technical documentation. All deliverables no
 |---|---|
 | **Microservices (PE-1 final)** | **.NET Aspire** + **YARP** + **Polly**; split into Auth / Product / Cart / Order. **MassTransit + RabbitMQ**, **Transactional Outbox**, **Saga** for checkout. **Design:** [docs/MICROSERVICES-PE1.md](docs/MICROSERVICES-PE1.md). |
 | **RabbitMQ + async orders** | ✅ **Included in PE-1 final** — durable messaging, inventory/email/cart via MassTransit (replaces in-process `EmailQueue` at scale). |
-| **ElasticSearch** | Full-text search for product catalogues (material, style, price). |
-| **Distributed Lock (Redis)** | Redlock for atomic inventory deduction — **required with PE-1** multi-instance Product/Order. |
+| **ElasticSearch** | ✅ **Implemented (PE-3)** — Product API keyword search; Postgres fallback. |
+| **Distributed Lock & inventory (PE-4)** | **Baseline ✅:** Redis lock on multi-instance stock deduct + concurrency test. **Next:** reservation (PaymentIntent TTL), DB atomic decrement, gateway rate limit, Redis HA, lock/stock metrics. **Not a substitute:** PE-6 Redis cart (cart reads only). |
 | **Async order processing** | ✅ **Included in PE-1 final** — MassTransit Saga (payment → stock → email → clear cart). |
 | **Cart Optimisation** | Redis-backed cart: sub-ms reads, cross-device sync, guest-to-user merge. |
 | **SQL Sharding** | Horizontal partitioning of large tables by date or user ID. |
 | **Thread Pool Tuning** | Custom thread pool for flash sales and bulk order processing. |
 | **AI Chatbot (Low Priority)** | Customer service bot via OpenAI API or Ollama (local LLM). |
 | **Internationalisation (i18n)** | ✅ **Implemented** — `/en/` + `/zh/` via next-intl (AU English + 简体中文). |
+
+### Spring Cloud large mall — inventory & checkout (reference)
+
+Production Java/Spring Cloud shopping platforms typically combine **several** layers (not Redis lock alone):
+
+| Layer | Typical Spring stack | Novacart (.NET) |
+|---|---|---|
+| Gateway + rate limit | Spring Cloud Gateway + Sentinel | YARP — **rate limit planned (PE-4)** |
+| Checkout orchestration | Spring Cloud Stream + Saga / Seata | ✅ MassTransit Saga + Outbox |
+| Stock deduct lock | Redisson / Redis | ✅ `RedisDistributedLockService` |
+| Stock **reservation** | Redis/DB hold + TTL | **Planned (PE-4)** |
+| DB last defence | `UPDATE … WHERE stock >= qty` | **Planned (PE-4)** |
+| Flash-sale queue | MQ + 限流 | **Planned (PE-4)** |
+| Cart cache | Redis | Postgres today → **PE-6** |
+| Search | Elasticsearch | ✅ PE-3 |
+
+Details: [TODO.md § PE-4](TODO.md#pe-4--distributed-lock--inventory-hardening-redis) · [MICROSERVICES-PE1.md § Spring Cloud](docs/MICROSERVICES-PE1.md#4-spring-cloud-comparison-final-novacart-row)
 
 ---
 

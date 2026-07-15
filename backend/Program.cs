@@ -14,6 +14,7 @@ using StackExchange.Redis;
 
 using Novacart.Api.Services.Catalog;
 using Novacart.Api.Services.Payments;
+using Novacart.Api.Search;
 using Stripe;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -40,6 +41,7 @@ builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
 builder.Services.AddScoped<IProductService, Novacart.Api.Services.ProductService>();
+builder.Services.AddNovacartElasticsearch(builder.Configuration);
 builder.Services.AddScoped<IAdminProductService, AdminProductService>();
 builder.Services.AddScoped<IAdminOrderService, AdminOrderService>();
 builder.Services.AddScoped<IPriceRuleService, PriceRuleService>();

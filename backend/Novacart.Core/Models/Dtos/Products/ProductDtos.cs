@@ -31,4 +31,7 @@ public class PagedResult<T>
     public int Page { get; set; }
     public int PageSize { get; set; }
     public int TotalPages => PageSize > 0 ? (int)Math.Ceiling((double)TotalCount / PageSize) : 0;
+
+    /// <summary>When keyword search ran: "elasticsearch" or "postgres". Null for browse-only queries.</summary>
+    public string? SearchEngine { get; set; }
 }

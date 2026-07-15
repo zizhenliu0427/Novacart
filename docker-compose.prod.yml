@@ -44,6 +44,9 @@ services:
       Aws__S3__AccessKey: ${AWS_ACCESS_KEY_ID}
       Aws__S3__SecretKey: ${AWS_SECRET_ACCESS_KEY}
       Aws__S3__PublicBaseUrl: ${AWS_S3_PUBLIC_BASE_URL}
+      Elasticsearch__Enabled: ${ELASTICSEARCH_ENABLED:-true}
+      Elasticsearch__Url: ${ELASTICSEARCH_URL:-http://elasticsearch:9200}
+      Elasticsearch__IndexName: ${ELASTICSEARCH_INDEX:-novacart-products}
 
   cart-api:
     environment:

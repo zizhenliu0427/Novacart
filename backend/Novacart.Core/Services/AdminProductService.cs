@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Novacart.Api.Data;
 using Novacart.Api.Models.Dtos.Products;
 using Novacart.Api.Models.Entities;
+using Novacart.Api.Search;
 
 namespace Novacart.Api.Services;
 
@@ -21,11 +22,16 @@ public sealed class AdminProductService : IAdminProductService
 {
     private readonly AppDbContext _db;
     private readonly IRedisCacheService _cache;
+    private readonly IProductSearchIndexer _searchIndexer;
 
-    public AdminProductService(AppDbContext db, IRedisCacheService cache)
+    public AdminProductService(
+        AppDbContext db,
+        IRedisCacheService cache,
+        IProductSearchIndexer searchIndexer)
     {
         _db = db;
         _cache = cache;
+        _searchIndexer = searchIndexer;
     }
 
     public async Task<PagedResult<AdminProductDto>> GetAllAsync(
@@ -103,6 +109,7 @@ public sealed class AdminProductService : IAdminProductService
         _db.Products.Add(product);
         await SaveAsync();
         await _cache.RemoveByPrefixAsync("products:list:");
+        await SyncSearchIndexAsync(product.Id);
         await ReloadCategoryAsync(product);
         return Map(product);
     }
@@ -132,6 +139,7 @@ public sealed class AdminProductService : IAdminProductService
 
         await SaveAsync();
         await _cache.RemoveByPrefixAsync("products:list:");
+        await SyncSearchIndexAsync(product.Id);
         await ReloadCategoryAsync(product);
         return Map(product);
     }
@@ -148,6 +156,22 @@ public sealed class AdminProductService : IAdminProductService
         product.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         await _cache.RemoveByPrefixAsync("products:list:");
+        await _searchIndexer.RemoveProductAsync(id);
+    }
+
+    private async Task SyncSearchIndexAsync(Guid productId)
+    {
+        if (!_searchIndexer.IsEnabled)
+            return;
+
+        try
+        {
+            await _searchIndexer.IndexProductAsync(productId);
+        }
+        catch
+        {
+            // Search index is best-effort; Postgres remains source of truth.
+        }
     }
 
     private async Task ValidateReferencesAsync(AdminProductUpsertRequest request, Guid? currentId)

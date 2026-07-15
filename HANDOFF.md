@@ -523,7 +523,7 @@ All items below are **not yet implemented** — explicitly out of scope for P1/P
 | PE-2 | **RabbitMQ** | ✅ **Part of PE-1 final** — MassTransit transport; replaces in-process `EmailQueue` at scale. | (See PE-1.) |
 | PE-3 | **ElasticSearch** | ✅ Full-text product search (Product API; Postgres fallback). | — |
 | PE-4 | **Distributed Lock & inventory hardening** | **✅ Complete** — Redlock + checkout holds (TTL) + atomic SQL + YARP rate limit + Redis HA docs + OTel metrics. **PE-6 cart ≠ stock lock.** | — |
-| PE-5 | **Async Order Processing** | ✅ **Part of PE-1 final** — MassTransit Saga (payment → inventory → email → clear cart). | (See PE-1.) |
+| PE-5 | **Async Order Processing** | ✅ **Part of PE-1 final** — MassTransit Saga + admin saga/DLQ retry UI. | — |
 | PE-6 | **Cart Optimisation** | Redis-backed cart: sub-ms reads, cross-device sync, guest-to-user merge. | PostgreSQL cart latency or cross-device sync becomes a bottleneck (current guest merge already works in Postgres). |
 | PE-7 | **SQL Sharding** | Horizontal partitioning of large tables by date or user ID. | Single Postgres instance hits storage/IO limits on orders or audit tables. |
 | PE-8 | **Thread Pool Tuning** | Custom thread pool for flash sales and bulk order processing. | Thread-pool starvation or tail latency under burst checkout load. |

@@ -12,7 +12,7 @@ run_migrate() {
   ConnectionStrings__DefaultConnection="Host=${HOST};Port=${PORT};Database=${db};Username=${USER};Password=${PASS}" \
     dotnet ef database update \
       --project Novacart.Core/Novacart.Core.csproj \
-      --startup-project Services/Novacart.Order.Api/Novacart.Order.Api.csproj \
+      --context AppDbContext \
       --verbose
 }
 

@@ -3,6 +3,7 @@ using Novacart.Api.Data;
 using Novacart.Api.Models.Entities;
 using Novacart.Api.Models.Dtos.Products;
 using Novacart.Api.Mappers;
+using Novacart.Api.Search;
 
 namespace Novacart.Api.Services;
 
@@ -30,14 +31,23 @@ public class ProductService : IProductService
     private readonly AppDbContext _db;
     private readonly IPricingService _pricing;
     private readonly IRedisCacheService _cache;
+    private readonly IProductSearchService _search;
+    private readonly ILogger<ProductService> _logger;
 
     private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(60);
 
-    public ProductService(AppDbContext db, IPricingService pricing, IRedisCacheService cache)
+    public ProductService(
+        AppDbContext db,
+        IPricingService pricing,
+        IRedisCacheService cache,
+        IProductSearchService search,
+        ILogger<ProductService> logger)
     {
         _db = db;
         _pricing = pricing;
         _cache = cache;
+        _search = search;
+        _logger = logger;
     }
 
     // ── Static helper (safe inside EF LINQ expressions) ───────
@@ -56,11 +66,59 @@ public class ProductService : IProductService
         var cached = await _cache.GetAsync<PagedResult<ProductListItemDto>>(cacheKey);
         if (cached is not null) return cached;
 
+        PagedResult<ProductListItemDto> result;
+        if (!string.IsNullOrWhiteSpace(q) && _search.IsEnabled)
+        {
+            result = await TryElasticsearchSearchAsync(
+                q, categoryId, categoryIds, sort, minPrice, maxPrice, tag, page, pageSize)
+                ?? await QueryPostgresAsync(
+                    q, categoryId, categoryIds, sort, minPrice, maxPrice, tag, page, pageSize, searchEngine: "postgres");
+        }
+        else
+        {
+            result = await QueryPostgresAsync(
+                q, categoryId, categoryIds, sort, minPrice, maxPrice, tag, page, pageSize, searchEngine: null);
+        }
+
+        await _cache.SetAsync(cacheKey, result, CacheTtl);
+        return result;
+    }
+
+    private async Task<PagedResult<ProductListItemDto>?> TryElasticsearchSearchAsync(
+        string? q, int? categoryId, int[]? categoryIds, string? sort,
+        decimal? minPrice, decimal? maxPrice, string? tag,
+        int page, int pageSize)
+    {
+        try
+        {
+            if (!await _search.IsHealthyAsync())
+                return null;
+
+            var esResult = await _search.SearchAsync(new ProductSearchQuery(
+                q!, categoryId, categoryIds, sort, minPrice, maxPrice, tag, page, pageSize));
+
+            if (!esResult.UsedElasticsearch)
+                return null;
+
+            return await BuildResultFromIdsAsync(
+                esResult.ProductIds, esResult.TotalCount, page, pageSize, searchEngine: "elasticsearch");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Elasticsearch search failed — falling back to Postgres ILIKE.");
+            return null;
+        }
+    }
+
+    private async Task<PagedResult<ProductListItemDto>> QueryPostgresAsync(
+        string? q, int? categoryId, int[]? categoryIds, string? sort,
+        decimal? minPrice, decimal? maxPrice, string? tag,
+        int page, int pageSize, string? searchEngine)
+    {
         var query = _db.Products
             .Include(p => p.Category)
             .Where(p => p.IsActive);
 
-        // Keyword search (case-insensitive ILIKE via EF.Functions.ILike)
         if (!string.IsNullOrWhiteSpace(q))
         {
             var pattern = $"%{q.Trim()}%";
@@ -69,55 +127,89 @@ public class ProductService : IProductService
                 (p.Description != null && EF.Functions.ILike(p.Description, pattern)));
         }
 
-        // Category filter — single or multi
         if (categoryIds is { Length: > 0 })
             query = query.Where(p => p.CategoryId.HasValue && categoryIds.Contains(p.CategoryId.Value));
         else if (categoryId.HasValue)
             query = query.Where(p => p.CategoryId == categoryId.Value);
 
-        // Price range filter
         if (minPrice.HasValue)
             query = query.Where(p => p.Price >= minPrice.Value);
         if (maxPrice.HasValue)
             query = query.Where(p => p.Price <= maxPrice.Value);
 
-        // Tag filter
         if (!string.IsNullOrWhiteSpace(tag))
             query = query.Where(p => p.Tags.Contains(tag.Trim()));
 
-        // Sorting
         query = sort switch
         {
             "price_asc"  => query.OrderBy(p => p.Price),
             "price_desc" => query.OrderByDescending(p => p.Price),
             "name_asc"   => query.OrderBy(p => p.Name),
-            _            => query.OrderByDescending(p => p.CreatedAt), // "newest" default
+            _            => query.OrderByDescending(p => p.CreatedAt),
         };
 
         var total = await query.CountAsync();
 
-        // Materialise page first, then apply dynamic pricing post-query.
         var pageItems = await query
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
 
+        return await MapPageAsync(pageItems, total, page, pageSize, searchEngine);
+    }
+
+    private async Task<PagedResult<ProductListItemDto>> BuildResultFromIdsAsync(
+        IReadOnlyList<Guid> orderedIds,
+        int totalCount,
+        int page,
+        int pageSize,
+        string searchEngine)
+    {
+        if (orderedIds.Count == 0)
+        {
+            return new PagedResult<ProductListItemDto>
+            {
+                Items = Array.Empty<ProductListItemDto>(),
+                TotalCount = totalCount,
+                Page = page,
+                PageSize = pageSize,
+                SearchEngine = searchEngine,
+            };
+        }
+
+        var products = await _db.Products
+            .Include(p => p.Category)
+            .Where(p => orderedIds.Contains(p.Id) && p.IsActive)
+            .ToListAsync();
+
+        var byId = products.ToDictionary(p => p.Id);
+        var ordered = orderedIds
+            .Where(byId.ContainsKey)
+            .Select(id => byId[id])
+            .ToList();
+
+        return await MapPageAsync(ordered, totalCount, page, pageSize, searchEngine);
+    }
+
+    private async Task<PagedResult<ProductListItemDto>> MapPageAsync(
+        IReadOnlyList<Product> pageItems,
+        int totalCount,
+        int page,
+        int pageSize,
+        string? searchEngine)
+    {
         var activeRules = await LoadActiveRulesAsync(pageItems);
 
-        var items = pageItems.Select(p => ProductMapper.ToListItemDto(
-            p, _pricing.ResolveEffectivePrice(p, activeRules)
-        )).ToList();
-
-        var result = new PagedResult<ProductListItemDto>
+        return new PagedResult<ProductListItemDto>
         {
-            Items      = items,
-            TotalCount = total,
-            Page       = page,
-            PageSize   = pageSize,
+            Items = pageItems.Select(p => ProductMapper.ToListItemDto(
+                p, _pricing.ResolveEffectivePrice(p, activeRules)
+            )).ToList(),
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize,
+            SearchEngine = searchEngine,
         };
-
-        await _cache.SetAsync(cacheKey, result, CacheTtl);
-        return result;
     }
 
     public async Task<ProductDetailDto> GetByIdAsync(Guid id)

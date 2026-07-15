@@ -18,7 +18,14 @@ var jaeger = builder.AddContainer("jaeger", "jaegertracing/all-in-one", "1.57")
     .WithHttpEndpoint(16686, 16686, name: "ui")
     .WithEndpoint(4317, 4317, name: "otlp");
 
+var elasticsearch = builder.AddContainer("elasticsearch", "docker.elastic.co/elasticsearch/elasticsearch", "8.15.0")
+    .WithEnvironment("discovery.type", "single-node")
+    .WithEnvironment("xpack.security.enabled", "false")
+    .WithEnvironment("ES_JAVA_OPTS", "-Xms512m -Xmx512m")
+    .WithHttpEndpoint(9200, 9200, name: "http");
+
 const string otelEndpoint = "http://jaeger:4317";
+const string elasticsearchUrl = "http://elasticsearch:9200";
 
 var authApi = builder.AddProject<Projects.Novacart_Auth_Api>("auth-api")
     .WithReference(authDb)
@@ -35,10 +42,14 @@ var productApi = builder.AddProject<Projects.Novacart_Product_Api>("product-api"
     .WithReference(rabbitmq)
     .WithEnvironment("OTEL_EXPORTER_OTLP_ENDPOINT", otelEndpoint)
     .WithEnvironment("OTEL_SERVICE_NAME", "product-api")
+    .WithEnvironment("Elasticsearch__Enabled", "true")
+    .WithEnvironment("Elasticsearch__Url", elasticsearchUrl)
+    .WithEnvironment("Elasticsearch__IndexName", "novacart-products")
     .WaitFor(postgres)
     .WaitFor(redis)
     .WaitFor(rabbitmq)
-    .WaitFor(jaeger);
+    .WaitFor(jaeger)
+    .WaitFor(elasticsearch);
 
 var cartApi = builder.AddProject<Projects.Novacart_Cart_Api>("cart-api")
     .WithReference(cartDb)

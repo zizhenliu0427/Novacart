@@ -22,6 +22,8 @@ export interface PagedResult<T> {
   page: number;
   pageSize: number;
   totalPages: number;
+  /** Present on keyword search: "elasticsearch" or "postgres". */
+  searchEngine?: string | null;
 }
 
 export interface AdminProduct extends Product {
