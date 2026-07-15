@@ -18,6 +18,7 @@ public class PaymentService : IPaymentService
     private readonly AppDbContext _db;
     private readonly IPaymentStrategyFactory _strategyFactory;
     private readonly IOrderFactory _orderFactory;
+    private readonly IPricingService _pricing;
     private readonly IRedisCacheService _cache;
     private readonly IEmailService _email;
     private readonly ILogger<PaymentService> _logger;
@@ -27,6 +28,7 @@ public class PaymentService : IPaymentService
         AppDbContext db,
         IPaymentStrategyFactory strategyFactory,
         IOrderFactory orderFactory,
+        IPricingService pricing,
         IRedisCacheService cache,
         IConfiguration config,
         IEmailService email,
@@ -35,6 +37,7 @@ public class PaymentService : IPaymentService
         _db = db;
         _strategyFactory = strategyFactory;
         _orderFactory = orderFactory;
+        _pricing = pricing;
         _cache = cache;
         _email = email;
         _logger = logger;
@@ -66,10 +69,26 @@ public class PaymentService : IPaymentService
             .FirstOrDefaultAsync(a => a.Id == request.AddressId && a.UserId == userId)
             ?? throw AppException.NotFound("Shipping address");
 
-        var user = await _db.Users.FindAsync(userId) 
+        var user = await _db.Users.FindAsync(userId)
             ?? throw AppException.NotFound("User");
 
-        var order = _orderFactory.CreateFromCart(cart, user, address);
+        // Load active pricing rules so the order reflects dynamic discounts
+        var productIds = cart.Items.Select(ci => ci.ProductId).Distinct().ToList();
+        var categoryIds = cart.Items
+            .Where(ci => ci.Product.CategoryId.HasValue)
+            .Select(ci => ci.Product.CategoryId!.Value)
+            .Distinct()
+            .ToList();
+        var activeRules = await _db.PriceRules
+            .Where(r => r.IsActive &&
+                        ((r.StartsAt == null || r.StartsAt <= DateTime.UtcNow) &&
+                         (r.EndsAt == null || r.EndsAt >= DateTime.UtcNow)) &&
+                        ((r.ProductId != null && productIds.Contains(r.ProductId.Value)) ||
+                         (r.CategoryId != null && categoryIds.Contains(r.CategoryId.Value)) ||
+                         (r.ProductId == null && r.CategoryId == null)))
+            .ToListAsync();
+
+        var order = _orderFactory.CreateFromCart(cart, user, address, activeRules);
 
         _db.Orders.Add(order);
         await _db.SaveChangesAsync();

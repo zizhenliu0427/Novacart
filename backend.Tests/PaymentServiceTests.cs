@@ -51,7 +51,7 @@ public class PaymentServiceTests
 
         var strategies = new List<IPaymentStrategy> { new FakePaymentStrategy() };
         _strategyFactory = new PaymentStrategyFactory(strategies);
-        _orderFactory = new OrderFactory();
+        _orderFactory = new OrderFactory(new PricingService());
     }
 
     [Fact]
@@ -59,7 +59,7 @@ public class PaymentServiceTests
     {
         using var db = TestDbFactory.Create();
         var cartSvc = new CartService(db, new PricingService());
-        var paymentSvc = new PaymentService(db, _strategyFactory, _orderFactory, new NullRedisCacheService(), _config, new FakeEmailService(), NullLogger<PaymentService>.Instance);
+        var paymentSvc = new PaymentService(db, _strategyFactory, _orderFactory, new PricingService(), new NullRedisCacheService(), _config, new FakeEmailService(), NullLogger<PaymentService>.Instance);
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
@@ -108,7 +108,7 @@ public class PaymentServiceTests
     public async Task ProcessCheckoutAsync_ThrowsAppException_WhenCartIsEmpty()
     {
         using var db = TestDbFactory.Create();
-        var paymentSvc = new PaymentService(db, _strategyFactory, _orderFactory, new NullRedisCacheService(), _config, new FakeEmailService(), NullLogger<PaymentService>.Instance);
+        var paymentSvc = new PaymentService(db, _strategyFactory, _orderFactory, new PricingService(), new NullRedisCacheService(), _config, new FakeEmailService(), NullLogger<PaymentService>.Instance);
         var userId = await TestDbFactory.SeedTestUserAsync(db);
 
         var addressId = await SeedAddressAsync(db, userId);
@@ -124,7 +124,7 @@ public class PaymentServiceTests
     {
         using var db = TestDbFactory.Create();
         var cartSvc = new CartService(db, new PricingService());
-        var paymentSvc = new PaymentService(db, _strategyFactory, _orderFactory, new NullRedisCacheService(), _config, new FakeEmailService(), NullLogger<PaymentService>.Instance);
+        var paymentSvc = new PaymentService(db, _strategyFactory, _orderFactory, new PricingService(), new NullRedisCacheService(), _config, new FakeEmailService(), NullLogger<PaymentService>.Instance);
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);
@@ -172,7 +172,7 @@ public class PaymentServiceTests
     {
         using var db = TestDbFactory.Create();
         var cartSvc = new CartService(db, new PricingService());
-        var paymentSvc = new PaymentService(db, _strategyFactory, _orderFactory, new NullRedisCacheService(), _config, new FakeEmailService(), NullLogger<PaymentService>.Instance);
+        var paymentSvc = new PaymentService(db, _strategyFactory, _orderFactory, new PricingService(), new NullRedisCacheService(), _config, new FakeEmailService(), NullLogger<PaymentService>.Instance);
 
         var userId = await TestDbFactory.SeedTestUserAsync(db);
         var product = await TestDbFactory.GetFirstProductAsync(db);

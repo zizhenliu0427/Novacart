@@ -50,7 +50,7 @@ builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<Novacart.Api.Factories.IOrderFactory, Novacart.Api.Factories.OrderFactory>();
 builder.Services.AddScoped<Novacart.Api.Factories.IPaymentStrategyFactory, Novacart.Api.Factories.PaymentStrategyFactory>();
 
-// P2 scaffold services (stub bodies — see HANDOFF §7 / §13)
+// P2 services (fully implemented — see HANDOFF §7 / §13)
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IWishlistService, WishlistService>();
 builder.Services.AddScoped<IPricingService, PricingService>();
@@ -144,11 +144,15 @@ builder.Services.AddSwaggerGen(options =>
     options.AddSecurityRequirement(new OpenApiSecurityRequirement { [scheme] = Array.Empty<string>() });
 });
 
-// CORS (allow Next.js frontend)
+// CORS (allow Next.js frontend — local dev + configurable production origin)
+var corsOrigins = new List<string> { "http://localhost:3000", "http://localhost:3001" };
+var prodOrigin = builder.Configuration["Cors:AllowedOrigin"];
+if (!string.IsNullOrEmpty(prodOrigin)) corsOrigins.Add(prodOrigin);
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
-        policy.WithOrigins("http://localhost:3000", "http://localhost:3001")
+        policy.WithOrigins(corsOrigins.ToArray())
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials());
@@ -182,7 +186,7 @@ static async Task EnsureDevAdminAsync(AppDbContext db, IConfiguration config)
     var fullName = config["DevBootstrap:AdminName"] ?? "Dev Admin";
 
     // Check if any admin already exists — skip if so.
-    var adminRoleId = 2; // RoleNames.AdminId (seeded)
+    var adminRoleId = RoleNames.AdminId;
     var hasAdmin = db.Set<UserRole>().Any(ur => ur.RoleId == adminRoleId);
     if (hasAdmin) return;
 
@@ -213,8 +217,11 @@ app.UseResponseCompression();
 app.UseResponseCaching();
 
 
-app.UseSwagger();
-app.UseSwaggerUI();
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 app.UseCors("AllowFrontend");
 

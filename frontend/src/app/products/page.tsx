@@ -5,7 +5,9 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ProductCard } from '@/components/ProductCard';
 import { Input } from '@/components/ui/Input';
+import { Pagination } from '@/components/ui/Pagination';
 import { GridIcon } from '@/components/icons';
+import { apiCall } from '@/lib/api';
 import type { PagedResult, Product } from '@/types/product';
 
 const SORT_OPTIONS = [
@@ -32,11 +34,14 @@ const POPULAR_TAGS = [
   'organic',
 ];
 
+const PAGE_SIZE = 12;
+
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   // Search & sorting
   const [query, setQuery] = useState('');
@@ -62,7 +67,7 @@ export default function ProductsPage() {
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const params = new URLSearchParams({ sort, page: '1', pageSize: '50' });
+    const params = new URLSearchParams({ sort, page: page.toString(), pageSize: PAGE_SIZE.toString() });
     
     if (debouncedQuery) params.set('q', debouncedQuery);
     
@@ -76,9 +81,7 @@ export default function ProductsPage() {
     if (selectedTag) params.set('tag', selectedTag);
 
     try {
-      const res = await fetch(`/api/products?${params}`);
-      if (!res.ok) throw new Error(`Request failed (${res.status})`);
-      const data: PagedResult<Product> = await res.json();
+      const data = await apiCall<PagedResult<Product>>(`/api/products?${params}`);
       setProducts(data.items);
       setTotalCount(data.totalCount);
     } catch (err) {
@@ -86,11 +89,16 @@ export default function ProductsPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedQuery, sort, selectedCategories, appliedMinPrice, appliedMaxPrice, selectedTag]);
+  }, [debouncedQuery, sort, selectedCategories, appliedMinPrice, appliedMaxPrice, selectedTag, page]);
 
   useEffect(() => {
     fetchProducts();
   }, [fetchProducts]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedQuery, sort, selectedCategories, appliedMinPrice, appliedMaxPrice, selectedTag]);
 
   const toggleCategory = (id: number) => {
     setSelectedCategories((prev) =>
@@ -311,6 +319,14 @@ export default function ProductsPage() {
                 <ProductCard key={product.id} product={product} />
               ))}
             </div>
+          )}
+
+          {!loading && !error && totalCount > 0 && (
+            <Pagination
+              page={page}
+              totalPages={Math.ceil(totalCount / PAGE_SIZE)}
+              onPageChange={setPage}
+            />
           )}
 
           {!loading && !error && products.length === 0 && (

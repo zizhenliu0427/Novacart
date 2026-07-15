@@ -31,6 +31,7 @@ export default function SalesChart({ data, height = 320 }: SalesChartProps) {
   const option = useMemo(() => {
     const dates = data.map((d) => d.date);
     const revenues = data.map((d) => d.revenue);
+    const orders = data.map((d) => d.orders);
 
     return {
       // Keep the chart quiet: no title (the card already has one), no heavy grid.
@@ -50,15 +51,25 @@ export default function SalesChart({ data, height = 320 }: SalesChartProps) {
         axisLine: { lineStyle: { color: 'var(--border)' } },
         axisLabel: { color: 'var(--ink-muted)', fontSize: 11 },
       },
-      yAxis: {
-        type: 'value',
-        axisLabel: {
-          color: 'var(--ink-muted)',
-          fontSize: 11,
-          formatter: (value: number) => formatPrice(value),
+      yAxis: [
+        {
+          type: 'value',
+          axisLabel: {
+            color: 'var(--ink-muted)',
+            fontSize: 11,
+            formatter: (value: number) => formatPrice(value),
+          },
+          splitLine: { lineStyle: { color: 'var(--border)' } },
         },
-        splitLine: { lineStyle: { color: 'var(--border)' } },
-      },
+        {
+          type: 'value',
+          axisLabel: {
+            color: 'var(--ink-muted)',
+            fontSize: 11,
+          },
+          splitLine: { show: false },
+        },
+      ],
       series: [
         {
           name: 'Revenue',
@@ -66,6 +77,7 @@ export default function SalesChart({ data, height = 320 }: SalesChartProps) {
           smooth: true,
           showSymbol: false,
           data: revenues,
+          yAxisIndex: 0,
           lineStyle: { color: 'var(--accent)', width: 2 },
           itemStyle: { color: 'var(--accent)' },
           areaStyle: {
@@ -80,6 +92,14 @@ export default function SalesChart({ data, height = 320 }: SalesChartProps) {
             },
             opacity: 0.25,
           },
+        },
+        {
+          name: 'Orders',
+          type: 'bar',
+          data: orders,
+          yAxisIndex: 1,
+          barWidth: '40%',
+          itemStyle: { color: 'var(--border)', borderRadius: [3, 3, 0, 0] },
         },
       ],
     };

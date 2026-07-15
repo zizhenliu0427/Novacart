@@ -44,7 +44,9 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         {
             Status = statusCode,
             Title = title,
-            Detail = exception.Message,
+            Detail = statusCode >= 500
+                ? "An unexpected error occurred. Please try again later."
+                : exception.Message,
             Instance = httpContext.Request.Path,
         };
 

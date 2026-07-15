@@ -52,7 +52,9 @@ public class EmailService : IEmailService
             };
 
             using var client = new SmtpClient();
-            client.ServerCertificateValidationCallback = (s, c, h, e) => true;
+            // Only skip certificate validation when explicitly configured (e.g. local dev SMTP).
+            if (_config.GetValue<bool>("Smtp:SkipCertValidation"))
+                client.ServerCertificateValidationCallback = (s, c, h, e) => true;
 
             var portVal = _config["Smtp:Port"];
             int port = int.TryParse(portVal, out var p) ? p : 587;

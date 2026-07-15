@@ -22,6 +22,11 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
+  // Never cache API calls — always go to network for fresh JSON data
+  if (e.request.url.includes('/api/')) {
+    return;
+  }
+
   e.respondWith(
     caches.match(e.request).then((cachedResponse) => {
       return cachedResponse || fetch(e.request).then((networkResponse) => {

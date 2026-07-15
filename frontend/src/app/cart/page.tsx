@@ -9,7 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { CartIcon, TrashIcon, PlusIcon, MinusIcon } from '@/components/icons';
 import { formatPrice } from '@/types/product';
-import { apiCall } from '@/lib/api';
+
 
 import { useRouter } from 'next/navigation';
 
@@ -27,20 +27,24 @@ export default function CartPage() {
     router.push('/checkout');
   }
 
-  if (!user) {
+  if (!user && !isLoading && (!cart || cart.items.length === 0)) {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-semibold tracking-tight text-ink">Your cart</h1>
         <EmptyState
           icon={<CartIcon />}
-          title="Sign in to view your cart"
-          description="Your cart is saved across devices — sign in to access it."
+          title="Your cart is empty"
+          description="Browse our products and add items to your cart."
           action={
-            <Link href="/login">
-              <Button>Sign in</Button>
+            <Link href="/products">
+              <Button>Browse Products</Button>
             </Link>
           }
         />
+        <p className="text-center text-sm text-ink-muted">
+          <Link href="/login" className="text-accent hover:underline">Sign in</Link>{' '}
+          to save your cart across devices.
+        </p>
       </div>
     );
   }

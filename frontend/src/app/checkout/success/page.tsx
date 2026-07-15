@@ -1,10 +1,12 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 
-export default function CheckoutSuccessPage() {
+function CheckoutSuccessContent() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get('session_id');
 
@@ -33,14 +35,26 @@ export default function CheckoutSuccessPage() {
         )}
 
         <div className="pt-4 flex flex-col sm:flex-row gap-3 justify-center">
-          <a href="/orders" className="w-full sm:w-auto">
+          <Link href="/orders" className="w-full sm:w-auto">
             <Button className="w-full">View Order History</Button>
-          </a>
-          <a href="/products" className="w-full sm:w-auto">
+          </Link>
+          <Link href="/products" className="w-full sm:w-auto">
             <Button variant="secondary" className="w-full">Continue Shopping</Button>
-          </a>
+          </Link>
         </div>
       </Card>
     </div>
+  );
+}
+
+export default function CheckoutSuccessPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-accent" />
+      </div>
+    }>
+      <CheckoutSuccessContent />
+    </Suspense>
   );
 }

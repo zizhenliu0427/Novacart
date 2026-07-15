@@ -13,15 +13,21 @@ public interface IOrderFactory
     /// <summary>
     /// Build an <see cref="Order"/> with its <see cref="OrderItem"/>s and
     /// shipping-address snapshot ready for persistence.
+    /// Accepts active pricing rules so that dynamic discounts are reflected
+    /// in <c>PriceAtPurchase</c> and order totals.
     /// </summary>
-    Order CreateFromCart(Cart cart, User user, UserAddress address);
+    Order CreateFromCart(Cart cart, User user, UserAddress address, IReadOnlyCollection<PriceRule> activeRules);
 }
 
 public class OrderFactory : IOrderFactory
 {
-    public Order CreateFromCart(Cart cart, User user, UserAddress address)
+    private readonly IPricingService _pricing;
+
+    public OrderFactory(IPricingService pricing) => _pricing = pricing;
+
+    public Order CreateFromCart(Cart cart, User user, UserAddress address, IReadOnlyCollection<PriceRule> activeRules)
     {
-        var subtotal = cart.Items.Sum(ci => ProductService.ResolvePrice(ci.Product) * ci.Quantity);
+        var subtotal = cart.Items.Sum(ci => _pricing.ResolveEffectivePrice(ci.Product, activeRules) * ci.Quantity);
         var shipping = subtotal >= 100.00m ? 0.00m : 10.00m;
         var tax = Math.Round((subtotal + shipping) * 0.10m, 2);
         var total = subtotal + shipping + tax;
@@ -32,7 +38,7 @@ public class OrderFactory : IOrderFactory
         {
             ProductId = ci.ProductId,
             ProductNameSnapshot = ci.Product.Name,
-            PriceAtPurchase = ProductService.ResolvePrice(ci.Product),
+            PriceAtPurchase = _pricing.ResolveEffectivePrice(ci.Product, activeRules),
             Quantity = ci.Quantity
         }).ToList();
 
