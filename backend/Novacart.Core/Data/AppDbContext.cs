@@ -28,6 +28,7 @@ public class AppDbContext : DbContext
     public DbSet<UserAddress> UserAddresses => Set<UserAddress>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<OrderCheckoutState> OrderCheckoutStates => Set<OrderCheckoutState>();
+    public DbSet<OrderShardRoute> OrderShardRoutes => Set<OrderShardRoute>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -331,6 +332,14 @@ public class AppDbContext : DbContext
             entity.Property(x => x.UserEmail).HasMaxLength(256);
             entity.Property(x => x.RowVersion).IsRowVersion();
             entity.HasIndex(x => x.OrderId).HasDatabaseName("idx_order_checkout_sagas_order_id");
+        });
+
+        modelBuilder.Entity<OrderShardRoute>(entity =>
+        {
+            entity.ToTable("order_shard_routes");
+            entity.HasKey(r => r.OrderId);
+            entity.HasIndex(r => r.UserId).HasDatabaseName("idx_order_shard_routes_user_id");
+            entity.HasIndex(r => r.ShardIndex).HasDatabaseName("idx_order_shard_routes_shard_index");
         });
 
         // ── Seed data ──────────────────────────────────────────

@@ -19,6 +19,8 @@ run_migrate() {
 run_migrate novacart_auth
 run_migrate novacart_product
 run_migrate novacart_commerce
+run_migrate novacart_commerce_0
+run_migrate novacart_commerce_1
 run_migrate novacart_cart
 
 echo "All service databases migrated."

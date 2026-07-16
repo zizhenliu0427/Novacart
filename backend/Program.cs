@@ -15,6 +15,7 @@ using StackExchange.Redis;
 using Novacart.Api.Services.Catalog;
 using Novacart.Api.Services.Payments;
 using Novacart.Api.Search;
+using Novacart.Api.Infrastructure.Sharding;
 using Stripe;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -27,6 +28,7 @@ StripeConfiguration.ApiKey = builder.Configuration["Stripe:SecretKey"];
 // PostgreSQL
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.Services.AddNovacartOrderSharding(builder.Configuration);
 
 // Redis
 builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>

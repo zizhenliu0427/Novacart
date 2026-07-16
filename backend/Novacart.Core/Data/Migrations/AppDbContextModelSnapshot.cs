@@ -582,6 +582,32 @@ namespace Novacart.Api.Data.Migrations
                     b.ToTable("order_status_history", (string)null);
                 });
 
+            modelBuilder.Entity("Novacart.Api.Models.Entities.OrderShardRoute", b =>
+                {
+                    b.Property<Guid>("OrderId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ShardIndex")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("OrderId");
+
+                    b.HasIndex("ShardIndex")
+                        .HasDatabaseName("idx_order_shard_routes_shard_index");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("idx_order_shard_routes_user_id");
+
+                    b.ToTable("order_shard_routes", (string)null);
+                });
+
             modelBuilder.Entity("Novacart.Api.Models.Entities.Payment", b =>
                 {
                     b.Property<Guid>("Id")

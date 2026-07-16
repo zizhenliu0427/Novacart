@@ -26,6 +26,10 @@ x-db-product: &db-product
 
 x-db-commerce: &db-commerce
   ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=novacart_commerce;Username=postgres;Password=postgres
+  ConnectionStrings__CommerceShard0: Host=postgres;Port=5432;Database=novacart_commerce_0;Username=postgres;Password=postgres
+  ConnectionStrings__CommerceShard1: Host=postgres;Port=5432;Database=novacart_commerce_1;Username=postgres;Password=postgres
+  OrderSharding__Enabled: "false"
+  OrderSharding__ShardCount: "2"
 
 x-db-cart: &db-cart
   ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=novacart_cart;Username=postgres;Password=postgres

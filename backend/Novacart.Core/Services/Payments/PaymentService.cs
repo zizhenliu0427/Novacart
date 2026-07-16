@@ -12,6 +12,7 @@ using Novacart.Api.Models.Dtos.Stock;
 using Novacart.Api.Services;
 using Novacart.Api.Services.Catalog;
 using Novacart.Api.Services.Stock;
+using Novacart.Api.Infrastructure.Sharding;
 
 namespace Novacart.Api.Services.Payments;
 
@@ -24,6 +25,7 @@ public interface IPaymentService
 public class PaymentService : IPaymentService
 {
     private readonly AppDbContext _db;
+    private readonly IShardedOrderDb _shardedOrderDb;
     private readonly IPaymentStrategyFactory _strategyFactory;
     private readonly IOrderFactory _orderFactory;
     private readonly IPricingService _pricing;
@@ -48,9 +50,11 @@ public class PaymentService : IPaymentService
         IServiceProvider services,
         IProductCatalogStore catalog,
         IStockHoldGateway stockHold,
-        IHttpContextAccessor httpContextAccessor)
+        IHttpContextAccessor httpContextAccessor,
+        IShardedOrderDb shardedOrderDb)
     {
         _db = db;
+        _shardedOrderDb = shardedOrderDb;
         _strategyFactory = strategyFactory;
         _orderFactory = orderFactory;
         _pricing = pricing;
@@ -62,6 +66,36 @@ public class PaymentService : IPaymentService
         _stockHold = stockHold;
         _httpContextAccessor = httpContextAccessor;
         _stripeWebhookSecret = config["Stripe:WebhookSecret"] ?? string.Empty;
+    }
+
+    public PaymentService(
+        AppDbContext db,
+        IPaymentStrategyFactory strategyFactory,
+        IOrderFactory orderFactory,
+        IPricingService pricing,
+        IRedisCacheService cache,
+        IConfiguration config,
+        IEmailQueue emailQueue,
+        ILogger<PaymentService> logger,
+        IServiceProvider services,
+        IProductCatalogStore catalog,
+        IStockHoldGateway stockHold,
+        IHttpContextAccessor httpContextAccessor)
+        : this(
+            db,
+            strategyFactory,
+            orderFactory,
+            pricing,
+            cache,
+            config,
+            emailQueue,
+            logger,
+            services,
+            catalog,
+            stockHold,
+            httpContextAccessor,
+            new SingleDbShardedOrderDb(db))
+    {
     }
 
     public async Task<CheckoutResponseDto> ProcessCheckoutAsync(Guid userId, CheckoutRequest request, string gateway)
@@ -103,8 +137,12 @@ public class PaymentService : IPaymentService
 
         var order = _orderFactory.CreateFromCart(cart, user, address, activeRules, products);
 
-        _db.Orders.Add(order);
-        await _db.SaveChangesAsync();
+        await _shardedOrderDb.ExecuteForUserAsync(userId, async shardDb =>
+        {
+            shardDb.Orders.Add(order);
+            await shardDb.SaveChangesAsync();
+        });
+        await _shardedOrderDb.RegisterRouteAsync(order.Id, userId);
 
         var holdLines = cart.Items
             .Select(i => new StockHoldLine(i.ProductId, i.Quantity))
@@ -113,8 +151,11 @@ public class PaymentService : IPaymentService
         var holdResult = await _stockHold.TryHoldForOrderAsync(order.Id, holdLines);
         if (!holdResult.Success)
         {
-            _db.Orders.Remove(order);
-            await _db.SaveChangesAsync();
+            await _shardedOrderDb.ExecuteForUserAsync(userId, async shardDb =>
+            {
+                shardDb.Orders.Remove(order);
+                await shardDb.SaveChangesAsync();
+            });
             throw new AppException(
                 holdResult.Error ?? "Unable to reserve stock for checkout.",
                 StatusCodes.Status409Conflict);
@@ -149,8 +190,11 @@ public class PaymentService : IPaymentService
             Status = PaymentStatuses.Pending
         };
 
-        _db.Payments.Add(payment);
-        await _db.SaveChangesAsync();
+        await _shardedOrderDb.ExecuteForUserAsync(userId, async shardDb =>
+        {
+            shardDb.Payments.Add(payment);
+            await shardDb.SaveChangesAsync();
+        });
 
         return new CheckoutResponseDto
         {
@@ -236,136 +280,125 @@ public class PaymentService : IPaymentService
 
     public async Task ExecutePaymentCompletionAsync(Guid orderId, string sessionId, string rawPayload, PaymentWebhook webhookLog)
     {
-        // Use a database transaction to ensure atomicity
-        using var transaction = await _db.Database.BeginTransactionAsync();
-        try
+        await _shardedOrderDb.ExecuteForOrderIdAsync(orderId, async shardDb =>
         {
-            var order = await _db.Orders
-                .Include(o => o.Items)
-                .FirstOrDefaultAsync(o => o.Id == orderId);
-
-            if (order is null || order.CurrentStatus != OrderStatuses.Pending)
-                return;
-
-            var payment = await _db.Payments
-                .FirstOrDefaultAsync(p => p.OrderId == orderId && p.ProviderTransactionId == sessionId);
-
-            if (payment is null)
-                return;
-
-            var publishEndpoint = _services.GetService<MassTransit.IPublishEndpoint>();
-            var distributed = publishEndpoint is not null;
-
-            if (distributed)
+            await using var transaction = await shardDb.Database.BeginTransactionAsync();
+            try
             {
-                payment.Status = PaymentStatuses.Succeeded;
+                var order = await shardDb.Orders
+                    .Include(o => o.Items)
+                    .FirstOrDefaultAsync(o => o.Id == orderId);
+
+                if (order is null || order.CurrentStatus != OrderStatuses.Pending)
+                    return;
+
+                var payment = await shardDb.Payments
+                    .FirstOrDefaultAsync(p => p.OrderId == orderId && p.ProviderTransactionId == sessionId);
+
+                if (payment is null)
+                    return;
+
+                var publishEndpoint = _services.GetService<MassTransit.IPublishEndpoint>();
+                var distributed = publishEndpoint is not null;
+
+                if (distributed)
+                {
+                    payment.Status = PaymentStatuses.Succeeded;
+                    payment.RawResponse = rawPayload;
+                    webhookLog.Processed = true;
+                    webhookLog.ProcessedAt = DateTime.UtcNow;
+
+                    var lines = order.Items
+                        .Select(i => new PaymentStockLineItem(i.ProductId, i.Quantity))
+                        .ToList();
+
+                    await publishEndpoint!.Publish(new PaymentCompleted(
+                        order.Id,
+                        order.OrderNumber,
+                        order.UserId,
+                        webhookLog.EventId,
+                        order.CustomerEmail,
+                        lines));
+
+                    await shardDb.SaveChangesAsync();
+                    await _db.SaveChangesAsync();
+                    await transaction.CommitAsync();
+                    return;
+                }
+
+                order = await shardDb.Orders
+                    .Include(o => o.User)
+                    .Include(o => o.Items).ThenInclude(oi => oi.Product)
+                    .FirstOrDefaultAsync(o => o.Id == orderId);
+
+                if (order is null || order.CurrentStatus != OrderStatuses.Pending)
+                    return;
+
+                var stockAvailable = order.Items.All(item => item.Product.StockQuantity >= item.Quantity);
+
+                if (stockAvailable)
+                {
+                    foreach (var item in order.Items)
+                        item.Product.StockQuantity -= item.Quantity;
+
+                    order.CurrentStatus = OrderStatuses.Paid;
+                    payment.Status = PaymentStatuses.Succeeded;
+
+                    var cart = await _db.Carts
+                        .Include(c => c.Items)
+                        .FirstOrDefaultAsync(c => c.UserId == order.UserId);
+
+                    if (cart is not null)
+                    {
+                        _db.CartItems.RemoveRange(cart.Items);
+                        cart.Items.Clear();
+                        cart.UpdatedAt = DateTime.UtcNow;
+                    }
+                }
+                else
+                {
+                    order.CurrentStatus = OrderStatuses.Cancelled;
+                    payment.Status = PaymentStatuses.Failed;
+                    webhookLog.ErrorMessage = "Stock exhausted prior to payment completion.";
+                }
+
                 payment.RawResponse = rawPayload;
                 webhookLog.Processed = true;
                 webhookLog.ProcessedAt = DateTime.UtcNow;
 
-                var lines = order.Items
-                    .Select(i => new PaymentStockLineItem(i.ProductId, i.Quantity))
-                    .ToList();
-
-                await publishEndpoint!.Publish(new PaymentCompleted(
-                    order.Id,
-                    order.OrderNumber,
-                    order.UserId,
-                    webhookLog.EventId,
-                    order.CustomerEmail,
-                    lines));
-
+                await shardDb.SaveChangesAsync();
                 await _db.SaveChangesAsync();
                 await transaction.CommitAsync();
-                return;
-            }
 
-            order = await _db.Orders
-                .Include(o => o.User)
-                .Include(o => o.Items).ThenInclude(oi => oi.Product)
-                .FirstOrDefaultAsync(o => o.Id == orderId);
-
-            if (order is null || order.CurrentStatus != OrderStatuses.Pending)
-                return;
-
-            // Monolith path: single DB transaction (stock + cart + email queue).
-            bool stockAvailable = true;
-            foreach (var item in order.Items)
-            {
-                if (item.Product.StockQuantity < item.Quantity)
+                if (stockAvailable && order.User != null)
                 {
-                    stockAvailable = false;
-                    break;
-                }
-            }
-
-            if (stockAvailable)
-            {
-                // Decrement stock
-                foreach (var item in order.Items)
-                {
-                    item.Product.StockQuantity -= item.Quantity;
-                }
-
-                order.CurrentStatus = OrderStatuses.Paid;
-                payment.Status = PaymentStatuses.Succeeded;
-
-                // Clear user cart
-                var cart = await _db.Carts
-                    .Include(c => c.Items)
-                    .FirstOrDefaultAsync(c => c.UserId == order.UserId);
-
-                if (cart is not null)
-                {
-                    _db.CartItems.RemoveRange(cart.Items);
-                    cart.Items.Clear();
-                    cart.UpdatedAt = DateTime.UtcNow;
-                }
-            }
-            else
-            {
-                order.CurrentStatus = OrderStatuses.Cancelled;
-                payment.Status = PaymentStatuses.Failed;
-                webhookLog.ErrorMessage = "Stock exhausted prior to payment completion.";
-            }
-
-            payment.RawResponse = rawPayload;
-            webhookLog.Processed = true;
-            webhookLog.ProcessedAt = DateTime.UtcNow;
-
-            await _db.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            // Queue confirmation email (non-blocking — sent by the background worker)
-            if (stockAvailable && order.User != null)
-            {
-                try
-                {
-                    await _emailQueue.EnqueueAsync(new EmailMessage
+                    try
                     {
-                        Kind = EmailKind.OrderConfirmation,
-                        Recipient = order.User.Email,
-                        OrderNumber = order.OrderNumber,
-                        OrderTotal = order.Total,
-                    });
+                        await _emailQueue.EnqueueAsync(new EmailMessage
+                        {
+                            Kind = EmailKind.OrderConfirmation,
+                            Recipient = order.User.Email,
+                            OrderNumber = order.OrderNumber,
+                            OrderTotal = order.Total,
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to enqueue order confirmation email.");
+                    }
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to enqueue order confirmation email.");
-                }
-            }
 
-            // Invalidate caches so the user sees updated order list and product stock.
-            await _cache.RemoveByPrefixAsync($"orders:user:{order.UserId}:");
-            await _cache.RemoveByPrefixAsync("products:list:");
-        }
-        catch (Exception ex)
-        {
-            await transaction.RollbackAsync();
-            webhookLog.ErrorMessage = $"Failed executing payment completion: {ex.Message}";
-            await _db.SaveChangesAsync();
-            throw;
-        }
+                await _cache.RemoveByPrefixAsync($"orders:user:{order.UserId}:");
+                await _cache.RemoveByPrefixAsync("products:list:");
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                webhookLog.ErrorMessage = $"Failed executing payment completion: {ex.Message}";
+                await _db.SaveChangesAsync();
+                throw;
+            }
+        });
     }
 
     private async Task<User> ResolveCheckoutUserAsync(Guid userId)

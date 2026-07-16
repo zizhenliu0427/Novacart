@@ -2,4 +2,6 @@
 SELECT 'CREATE DATABASE novacart_auth'     WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'novacart_auth')\gexec
 SELECT 'CREATE DATABASE novacart_product'  WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'novacart_product')\gexec
 SELECT 'CREATE DATABASE novacart_commerce' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'novacart_commerce')\gexec
+SELECT 'CREATE DATABASE novacart_commerce_0' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'novacart_commerce_0')\gexec
+SELECT 'CREATE DATABASE novacart_commerce_1' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'novacart_commerce_1')\gexec
 SELECT 'CREATE DATABASE novacart_cart'     WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'novacart_cart')\gexec

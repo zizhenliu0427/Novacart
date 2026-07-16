@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Novacart.Api.Data;
+using Novacart.Api.Infrastructure.Sharding;
 
 namespace Novacart.Api.Infrastructure;
 
@@ -26,6 +27,7 @@ public static class DatabaseRegistrationExtensions
             options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));
 
         RegisterProductReadWhenIsolated(services, configuration);
+        services.AddNovacartOrderSharding(configuration);
         return services;
     }
 

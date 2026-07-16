@@ -82,3 +82,17 @@ FK indexes on all navigation properties. These are created by `EnsureCreated()` 
 | Parameterised queries | ✅ Required | ✅ EF Core LINQ generates parameterised SQL; no raw string interpolation. |
 | Soft delete over hard delete | ✅ Recommended | ✅ Products use `IsActive` soft delete. Orders are never deleted. |
 | Audit columns: `created_at`, `updated_at` | ✅ Required | ✅ `CreatedAt` on all entities; `UpdatedAt` on mutable entities. |
+
+---
+
+## Order sharding (PE-7)
+
+| Topic | Standard | Novacart |
+|---|---|---|
+| Shard key | Stable hash on tenant/user id | `UserId` → FNV-1a mod `ShardCount` |
+| Routing index | `order_id → shard_index` | Table `order_shard_routes` on routing DB (`novacart_commerce`) |
+| Shard databases | Same schema, isolated rows | `novacart_commerce_0`, `novacart_commerce_1` (pilot) |
+| Legacy reads | Fallback when route missing | Pre-sharding orders remain on `DefaultConnection` |
+| Admin list | Cross-shard merge | Fan-out + in-memory sort/paginate (pilot) |
+
+Details: [PE7-SQL-SHARDING.md](PE7-SQL-SHARDING.md).

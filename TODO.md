@@ -185,15 +185,17 @@ Typical **Java / Spring Cloud** mall architecture maps roughly as follows (Novac
 
 ## PE-7 — SQL Sharding
 
+> **Status:** **Complete** (2026-07-16 pilot). See [docs/PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md). **Disabled by default.**
+
 **Purpose:** Horizontal partitioning of large tables by date or user ID.
 
 **Trigger:** Orders / order_status_history / payment_webhooks tables exceed single-node Postgres capacity.
 
-- [ ] Choose shard key (e.g. `UserId` hash or `CreatedAt` time range)
-- [ ] Pilot shard on `orders` + `order_items` (highest growth)
-- [ ] Routing layer in EF or raw SQL (shard resolver in service layer)
-- [ ] Migration plan for existing data; cross-shard admin queries (analytics) strategy
-- [ ] Update [docs/database-standards.md](docs/database-standards.md)
+- [x] Choose shard key (e.g. `UserId` hash or `CreatedAt` time range) — **UserId FNV-1a hash**
+- [x] Pilot shard on `orders` + `order_items` (highest growth) — co-locate payments + status history
+- [x] Routing layer in EF or raw SQL (shard resolver in service layer) — `IShardedOrderDb` + `order_shard_routes`
+- [x] Migration plan for existing data; cross-shard admin queries (analytics) strategy — documented in PE7 doc
+- [x] Update [docs/database-standards.md](docs/database-standards.md)
 
 ---
 

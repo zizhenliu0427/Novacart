@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Novacart.Api.Data;
+using Novacart.Api.Infrastructure.Sharding;
 using Novacart.Api.Models.Entities;
 using Novacart.Api.Services;
 using Novacart.Api.Services.Payments;
@@ -19,82 +20,111 @@ public interface IOrderCheckoutCompletionService
 }
 
 /// <summary>Order-side checkout mutations shared by the checkout saga.</summary>
-public class OrderCheckoutCompletionService(
-    AppDbContext db,
-    IRedisCacheService cache,
-    IStripeRefundService refundService,
-    IStockHoldGateway stockHold,
-    ILogger<OrderCheckoutCompletionService> logger) : IOrderCheckoutCompletionService
+public class OrderCheckoutCompletionService : IOrderCheckoutCompletionService
 {
-    public async Task<OrderCheckoutCompletionResult?> TryMarkPaidAsync(
-        Guid orderId,
-        CancellationToken cancellationToken = default)
+    private readonly IShardedOrderDb _shardedDb;
+    private readonly IRedisCacheService _cache;
+    private readonly IStripeRefundService _refundService;
+    private readonly IStockHoldGateway _stockHold;
+    private readonly ILogger<OrderCheckoutCompletionService> _logger;
+
+    public OrderCheckoutCompletionService(
+        AppDbContext db,
+        IRedisCacheService cache,
+        IStripeRefundService refundService,
+        IStockHoldGateway stockHold,
+        ILogger<OrderCheckoutCompletionService> logger)
+        : this(new SingleDbShardedOrderDb(db), cache, refundService, stockHold, logger)
     {
-        var order = await db.Orders
-            .FirstOrDefaultAsync(o => o.Id == orderId, cancellationToken);
-
-        if (order is null || order.CurrentStatus != OrderStatuses.Pending)
-            return null;
-
-        order.CurrentStatus = OrderStatuses.Paid;
-
-        var payment = await db.Payments.FirstOrDefaultAsync(p => p.OrderId == orderId, cancellationToken);
-        if (payment is not null)
-            payment.Status = PaymentStatuses.Succeeded;
-
-        await db.SaveChangesAsync(cancellationToken);
-
-        var email = !string.IsNullOrWhiteSpace(order.CustomerEmail)
-            ? order.CustomerEmail
-            : (await db.Users.FindAsync([order.UserId], cancellationToken))?.Email;
-
-        if (string.IsNullOrWhiteSpace(email))
-            return null;
-
-        await cache.RemoveByPrefixAsync($"orders:user:{order.UserId}:");
-        await cache.RemoveByPrefixAsync("products:list:");
-
-        logger.LogInformation("Order {OrderId} marked Paid via checkout saga", orderId);
-        return new OrderCheckoutCompletionResult(order.UserId, email);
     }
+
+    public OrderCheckoutCompletionService(
+        IShardedOrderDb shardedDb,
+        IRedisCacheService cache,
+        IStripeRefundService refundService,
+        IStockHoldGateway stockHold,
+        ILogger<OrderCheckoutCompletionService> logger)
+    {
+        _shardedDb = shardedDb;
+        _cache = cache;
+        _refundService = refundService;
+        _stockHold = stockHold;
+        _logger = logger;
+    }
+
+    public Task<OrderCheckoutCompletionResult?> TryMarkPaidAsync(
+        Guid orderId,
+        CancellationToken cancellationToken = default) =>
+        _shardedDb.ExecuteForOrderIdAsync(orderId, async db =>
+        {
+            var order = await db.Orders
+                .FirstOrDefaultAsync(o => o.Id == orderId, cancellationToken);
+
+            if (order is null || order.CurrentStatus != OrderStatuses.Pending)
+                return null;
+
+            order.CurrentStatus = OrderStatuses.Paid;
+
+            var payment = await db.Payments.FirstOrDefaultAsync(p => p.OrderId == orderId, cancellationToken);
+            if (payment is not null)
+                payment.Status = PaymentStatuses.Succeeded;
+
+            await db.SaveChangesAsync(cancellationToken);
+
+            var email = !string.IsNullOrWhiteSpace(order.CustomerEmail)
+                ? order.CustomerEmail
+                : (await db.Users.FindAsync([order.UserId], cancellationToken))?.Email;
+
+            if (string.IsNullOrWhiteSpace(email))
+                return null;
+
+            await _cache.RemoveByPrefixAsync($"orders:user:{order.UserId}:");
+            await _cache.RemoveByPrefixAsync("products:list:");
+
+            _logger.LogInformation("Order {OrderId} marked Paid via checkout saga", orderId);
+            return new OrderCheckoutCompletionResult(order.UserId, email);
+        });
 
     public async Task CancelAfterStockFailureAsync(
         Guid orderId,
         string reason,
         CancellationToken cancellationToken = default)
     {
-        var order = await db.Orders.FirstOrDefaultAsync(o => o.Id == orderId, cancellationToken);
-        if (order is null || order.CurrentStatus != OrderStatuses.Pending)
-            return;
-
-        order.CurrentStatus = OrderStatuses.Cancelled;
-
-        var payment = await db.Payments.FirstOrDefaultAsync(p => p.OrderId == orderId, cancellationToken);
-        if (payment is not null)
+        await _shardedDb.ExecuteForOrderIdAsync(orderId, async db =>
         {
-            if (payment.Status == PaymentStatuses.Succeeded)
+            var order = await db.Orders.FirstOrDefaultAsync(o => o.Id == orderId, cancellationToken);
+            if (order is null || order.CurrentStatus != OrderStatuses.Pending)
+                return;
+
+            order.CurrentStatus = OrderStatuses.Cancelled;
+
+            var payment = await db.Payments.FirstOrDefaultAsync(p => p.OrderId == orderId, cancellationToken);
+            if (payment is not null)
             {
-                var refund = await refundService.TryRefundAsync(payment, cancellationToken);
-                payment.Status = refund.Success ? PaymentStatuses.Refunded : PaymentStatuses.Failed;
-                if (!refund.Success)
+                if (payment.Status == PaymentStatuses.Succeeded)
                 {
-                    logger.LogWarning(
-                        "Order {OrderId} cancelled after stock failure but Stripe refund failed: {Error}",
-                        orderId,
-                        refund.ErrorMessage);
+                    var refund = await _refundService.TryRefundAsync(payment, cancellationToken);
+                    payment.Status = refund.Success ? PaymentStatuses.Refunded : PaymentStatuses.Failed;
+                    if (!refund.Success)
+                    {
+                        _logger.LogWarning(
+                            "Order {OrderId} cancelled after stock failure but Stripe refund failed: {Error}",
+                            orderId,
+                            refund.ErrorMessage);
+                    }
+                }
+                else
+                {
+                    payment.Status = PaymentStatuses.Failed;
                 }
             }
-            else
-            {
-                payment.Status = PaymentStatuses.Failed;
-            }
-        }
 
-        await db.SaveChangesAsync(cancellationToken);
-        await stockHold.ReleaseForOrderAsync(orderId, cancellationToken);
-        logger.LogWarning(
-            "Order {OrderId} cancelled after stock failure: {Reason}",
-            orderId,
-            reason);
+            await db.SaveChangesAsync(cancellationToken);
+            await _stockHold.ReleaseForOrderAsync(orderId, cancellationToken);
+            _logger.LogWarning(
+                "Order {OrderId} cancelled after stock failure: {Reason}",
+                orderId,
+                reason);
+        }, cancellationToken);
     }
 }
