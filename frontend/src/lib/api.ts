@@ -6,6 +6,8 @@ const API_BASE = '/api';
 interface ApiOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
+  /** When true, 401 does not redirect to login (guest-friendly endpoints). */
+  optionalAuth?: boolean;
 }
 
 interface ApiErrorPayload {
@@ -70,6 +72,7 @@ function bailToLogin(): never {
  * and structured error parsing.
  */
 export async function apiCall<T>(endpoint: string, options: ApiOptions = {}): Promise<T> {
+  const { optionalAuth = false } = options;
   let res = await fetch(`${API_BASE}${endpoint}`, buildInit(options));
 
   // Access token expired? Try to rotate it once, then retry the original request.
@@ -77,12 +80,12 @@ export async function apiCall<T>(endpoint: string, options: ApiOptions = {}): Pr
     const refreshed = await tryRefresh();
     if (refreshed) {
       res = await fetch(`${API_BASE}${endpoint}`, buildInit(options));
-    } else {
+    } else if (!optionalAuth) {
       bailToLogin();
     }
   }
 
-  if (res.status === 401) {
+  if (res.status === 401 && !optionalAuth) {
     bailToLogin();
   }
 

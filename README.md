@@ -163,7 +163,7 @@ The P14 spec requires comprehensive technical documentation. All deliverables no
 
 ## Planned Enhancements
 
-> Scaling enhancements PE-1 through PE-8 and PE-10 are **implemented** (PE-6/PE-7/PE-8 off by default). Remaining: PE-9. Tracked in **[TODO.md](TODO.md)** and [HANDOFF.md §11](HANDOFF.md#11-planned-enhancements-scaling-tail--not-scheduled).
+> Scaling enhancements **PE-1 through PE-10 are complete** (PE-6/PE-7/PE-8 off by default). Tracked in **[TODO.md](TODO.md)** and [HANDOFF.md §11](HANDOFF.md#11-planned-enhancements-scaling-tail--not-scheduled).
 
 | Technology | Purpose |
 |---|---|
@@ -175,8 +175,8 @@ The P14 spec requires comprehensive technical documentation. All deliverables no
 | **Cart Optimisation (PE-6)** | ✅ Redis cart snapshot; Postgres source of truth; `CartRedis.Enabled=false` default. [docs/PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md) |
 | **SQL Sharding (PE-7)** | ✅ UserId-hash order pilot; `OrderSharding.Enabled=false` default. [docs/PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md) |
 | **Thread Pool Tuning (PE-8)** | ✅ Min threads + webhook hot-path queue (off by default) — [docs/PE8-THREAD-POOL.md](docs/PE8-THREAD-POOL.md) |
-| **AI Chatbot (PE-9)** | OpenAI / Ollama support bot — not started |
-| **Internationalisation (PE-10)** | ✅ `/en/` + `/zh/` via next-intl |
+| **AI Chatbot (PE-9)** | ✅ OpenAI / Claude / Ollama support bot — [docs/PE9-AI-CHATBOT.md](docs/PE9-AI-CHATBOT.md) |
+| **Internationalisation (PE-10)** | ✅ `/en/` + `/zh/` via next-intl; admin forms + hreflang — [docs/PE10-I18N.md](docs/PE10-I18N.md) |
 
 ### Spring Cloud large mall — inventory & checkout (reference)
 

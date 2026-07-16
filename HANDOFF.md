@@ -5,9 +5,9 @@
 > project, the conventions to follow, the frontend design system to build against, and the
 > **Priority 2 (P2)** & **Priority 3 (P3)** feature-by-feature implementation checklist.
 >
-> **Status:** Priority 1 (MVP), Priority 2 (P2), Priority 3 (P3), and P14 are **complete**. **PE-1 through PE-8 and PE-10** are **implemented** (PE-6/PE-7/PE-8 disabled by default via config). **PE-9+** remain in [TODO.md](TODO.md).
+> **Status:** Priority 1 (MVP), Priority 2 (P2), Priority 3 (P3), and P14 are **complete**. **PE-1 through PE-10** are **implemented** (PE-6/PE-7/PE-8 disabled by default via config). **All Planned Enhancements are complete.**
 >
-> Last updated: 2026-07-16 — PE-8 thread pool tuning (min threads, webhook hot-path queue, dotnet-counters profiling).
+> Last updated: 2026-07-16 — PE-9 AI chatbot (OpenAI, Claude, Ollama).
 
 
 ---
@@ -515,7 +515,7 @@ P2 and P3 are **fully complete & verified**.
 
 Canonical source: [README §Planned Enhancements](README.md#planned-enhancements). Actionable checklist: **[TODO.md](TODO.md)**.
 
-All items below are **not yet implemented** unless marked ✅ — explicitly out of scope for P1/P2/P3/P14 until their trigger. **PE-1 through PE-8 and PE-10 are complete** (see [TODO.md](TODO.md)); remaining: PE-9, PE-10 optional follow-ups.
+All items below are **not yet implemented** unless marked ✅ — explicitly out of scope for P1/P2/P3/P14 until their trigger. **PE-1 through PE-10 are complete** (see [TODO.md](TODO.md)).
 
 | # | Enhancement | Purpose (from README) | First natural trigger |
 |---|---|---|---|
@@ -527,8 +527,8 @@ All items below are **not yet implemented** unless marked ✅ — explicitly out
 | PE-6 | **Cart Optimisation** | ✅ **Complete** — Redis cart snapshot (Postgres source of truth); `CartRedis.Enabled=false` by default. Testcontainers integration test. See [docs/PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md). | — |
 | PE-7 | **SQL Sharding** | ✅ **Complete (pilot)** — UserId-hash order sharding; analytics fan-out; backfill CLI. `OrderSharding.Enabled=false` by default. See [docs/PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md). | — |
 | PE-8 | **Thread Pool Tuning** | ✅ **Complete** — configurable min threads + optional Stripe webhook queue; `ThreadPool.Enabled=false` by default. See [docs/PE8-THREAD-POOL.md](docs/PE8-THREAD-POOL.md). | — |
-| PE-9 | **AI Chatbot (Low Priority)** | Customer service bot via **OpenAI API** or **Ollama** (local LLM). | Product/support requirement for automated Q&A on orders, shipping, returns. |
-| PE-10 | **Internationalisation (i18n)** | Bilingual UI (Chinese/English) with URL-based language routing (`/en/`, `/zh/` via next-intl). | ✅ Implemented (admin form copy optional follow-up). |
+| PE-9 | **AI Chatbot** | ✅ **Complete** — OpenAI / Claude / Ollama; FAQ fallback; opt-in widget. See [docs/PE9-AI-CHATBOT.md](docs/PE9-AI-CHATBOT.md). | — |
+| PE-10 | **Internationalisation (i18n)** | ✅ **Complete** — `/en/` + `/zh/` via next-intl; admin forms + hreflang. See [docs/PE10-I18N.md](docs/PE10-I18N.md). | — |
 
 ### PE implementation notes (when you pick one up)
 
@@ -548,7 +548,7 @@ Work in vertical slices; each PE item in [TODO.md](TODO.md) expands into concret
 12. **PE-6:** Redis cart cache ✅ — [docs/PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md); `CartRedisIntegrationTests` (Testcontainers).
 13. **PE-7:** Order SQL sharding pilot ✅ — analytics fan-out, backfill CLI, integration tests.
 14. **PE-8:** Thread pool tuning ✅ — [docs/PE8-THREAD-POOL.md](docs/PE8-THREAD-POOL.md); min threads + webhook queue; disabled by default.
-15. **PE-9+** — AI chatbot; PE-10 i18n ✅ done (admin form copy optional).
+15. **PE-9** — AI chatbot ✅ (OpenAI, Claude, Ollama).
 
 #### Per-phase test gate (do not skip the check; only add tests when warranted)
 

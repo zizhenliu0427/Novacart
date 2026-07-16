@@ -173,6 +173,7 @@ public static class NovacartServiceExtensions
         services.AddHostedService<EmailBackgroundWorker>();
         services.AddScoped<IStockHoldGateway, LocalStockHoldGateway>();
         services.AddNovacartStripeWebhookHotPath(configuration);
+        services.AddNovacartChatSupport(configuration);
         return services;
     }
 
@@ -196,6 +197,7 @@ public static class NovacartServiceExtensions
         services.AddScoped<IEmailQueue, MassTransitEmailQueue>();
         services.AddNovacartRabbitMqMonitoring();
         services.AddNovacartStripeWebhookHotPath(configuration);
+        services.AddNovacartChatSupport(configuration);
         return services;
     }
 

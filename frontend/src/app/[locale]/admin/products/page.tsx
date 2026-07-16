@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -72,6 +73,8 @@ function toForm(product: AdminProduct): ProductFormState {
 }
 
 export default function AdminProductsPage() {
+  const t = useTranslations('adminProducts');
+  const tc = useTranslations('common');
   const { user } = useAuth();
   const { formatAud } = useFormatAudPrice();
   const [products, setProducts] = useState<AdminProduct[]>([]);
@@ -115,7 +118,7 @@ export default function AdminProductsPage() {
       // 3. Store the resulting public URL in the form.
       setForm((value) => ({ ...value, imageUrl: presign.publicUrl }));
     } catch (err) {
-      setFormError(err instanceof Error ? `Image upload failed: ${err.message}` : 'Image upload failed.');
+      setFormError(err instanceof Error ? t('errUploadDetail', { message: err.message }) : t('errUpload'));
     } finally {
       setUploading(false);
       // Reset so selecting the same file again re-triggers the handler.
@@ -135,7 +138,7 @@ export default function AdminProductsPage() {
       setNotice(res.message);
       await loadProducts();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sync with Square.');
+      setError(err instanceof Error ? err.message : t('errSync'));
     } finally {
       setSyncing(false);
     }
@@ -163,7 +166,7 @@ export default function AdminProductsPage() {
       setTotalCount(data.totalCount);
       setTotalPages(data.totalPages);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load products.');
+      setError(err instanceof Error ? err.message : t('errLoad'));
     } finally {
       setLoading(false);
     }
@@ -177,7 +180,7 @@ export default function AdminProductsPage() {
     if (!user) return;
     apiCall<CategoryOption[]>('/admin/products/categories')
       .then(setCategories)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load categories.'));
+      .catch((err) => setError(err instanceof Error ? err.message : t('errCategories')));
   }, [user]);
 
   function openCreate() {
@@ -209,11 +212,11 @@ export default function AdminProductsPage() {
     const price = Number(form.price);
     const stockQuantity = Number(form.stockQuantity);
     if (!Number.isFinite(price) || price <= 0) {
-      setFormError('Price must be greater than zero.');
+      setFormError(t('errPrice'));
       return;
     }
     if (!Number.isInteger(stockQuantity) || stockQuantity < 0) {
-      setFormError('Stock must be a whole number of zero or more.');
+      setFormError(t('errStock'));
       return;
     }
     if (form.metadata.trim()) {
@@ -221,7 +224,7 @@ export default function AdminProductsPage() {
         const parsed: unknown = JSON.parse(form.metadata);
         if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error();
       } catch {
-        setFormError('Metadata must be a valid JSON object.');
+        setFormError(t('errMetadata'));
         return;
       }
     }
@@ -246,32 +249,32 @@ export default function AdminProductsPage() {
         await apiCall<AdminProduct>(`/admin/products/${editing.id}`, {
           method: 'PUT', body: request,
         });
-        setNotice(`Updated ${request.name}.`);
+        setNotice(t('noticeUpdated', { name: request.name }));
       } else {
         await apiCall<AdminProduct>('/admin/products', {
           method: 'POST', body: request,
         });
-        setNotice(`Created ${request.name}.`);
+        setNotice(t('noticeCreated', { name: request.name }));
       }
       setFormOpen(false);
       setEditing(null);
       await loadProducts();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Failed to save product.');
+      setFormError(err instanceof Error ? err.message : t('errSave'));
     } finally {
       setSubmitting(false);
     }
   }
 
   async function deactivate(product: AdminProduct) {
-    if (!user || !window.confirm(`Deactivate "${product.name}"? It will disappear from the storefront.`)) return;
+    if (!user || !window.confirm(t('confirmDeactivate', { name: product.name }))) return;
     setError(null);
     try {
       await apiCall<void>(`/admin/products/${product.id}`, { method: 'DELETE' });
-      setNotice(`Deactivated ${product.name}.`);
+      setNotice(t('noticeDeactivated', { name: product.name }));
       await loadProducts();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to deactivate product.');
+      setError(err instanceof Error ? err.message : t('errDeactivate'));
     }
   }
 
@@ -279,23 +282,23 @@ export default function AdminProductsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">Products & inventory</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink">{t('title')}</h1>
           <p className="mt-1 text-sm text-ink-muted">
-            {loading ? 'Loading catalogue…' : `${totalCount} product${totalCount === 1 ? '' : 's'}`}
+            {loading ? t('loadingCatalogue') : t('productCount', { count: totalCount })}
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={triggerSquareSync} disabled={syncing}>
-            {syncing ? 'Syncing...' : 'Sync with Square'}
+            {syncing ? t('syncing') : t('syncSquare')}
           </Button>
-          <Button onClick={openCreate}>Add product</Button>
+          <Button onClick={openCreate}>{t('addProduct')}</Button>
         </div>
       </div>
 
       {notice && (
         <div className="flex items-center justify-between rounded-lg border border-border bg-bg-subtle px-4 py-3 text-sm text-success">
           <span>{notice}</span>
-          <button onClick={() => setNotice(null)} className="text-ink-muted hover:text-ink" aria-label="Dismiss">×</button>
+          <button onClick={() => setNotice(null)} className="text-ink-muted hover:text-ink" aria-label={t('dismiss')}>×</button>
         </div>
       )}
 
@@ -305,24 +308,24 @@ export default function AdminProductsPage() {
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search name or slug…"
-            aria-label="Search products"
+            placeholder={t('searchPlaceholder')}
+            aria-label={t('searchAria')}
           />
         </div>
         <select
           value={status}
           onChange={(event) => { setStatus(event.target.value as StatusFilter); setPage(1); }}
           className="h-10 rounded-lg border border-border bg-surface px-3 text-sm text-ink focus:border-accent focus:outline-none"
-          aria-label="Filter by status"
+          aria-label={t('filterStatusAria')}
         >
-          <option value="all">All statuses</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
+          <option value="all">{t('statusAll')}</option>
+          <option value="active">{t('statusActive')}</option>
+          <option value="inactive">{t('statusInactive')}</option>
         </select>
       </div>
 
       {error && (
-        <EmptyState icon={<GridIcon />} title="Couldn't load catalogue" description={error} />
+        <EmptyState icon={<GridIcon />} title={t('loadErrorTitle')} description={error} />
       )}
 
       {!error && (
@@ -331,12 +334,12 @@ export default function AdminProductsPage() {
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="border-b border-border bg-bg-subtle text-xs uppercase tracking-wide text-ink-muted">
                 <tr>
-                  <th className="px-4 py-3 font-semibold">Product</th>
-                  <th className="px-4 py-3 font-semibold">Category</th>
-                  <th className="px-4 py-3 font-semibold">Price</th>
-                  <th className="px-4 py-3 font-semibold">Stock</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
+                  <th className="px-4 py-3 font-semibold">{t('colProduct')}</th>
+                  <th className="px-4 py-3 font-semibold">{t('colCategory')}</th>
+                  <th className="px-4 py-3 font-semibold">{t('colPrice')}</th>
+                  <th className="px-4 py-3 font-semibold">{t('colStock')}</th>
+                  <th className="px-4 py-3 font-semibold">{t('colStatus')}</th>
+                  <th className="px-4 py-3 text-right font-semibold">{t('colActions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -351,22 +354,22 @@ export default function AdminProductsPage() {
                       <p className="font-medium text-ink">{product.name}</p>
                       <p className="text-xs text-ink-muted">{product.slug}</p>
                     </td>
-                    <td className="px-4 py-3 text-ink-muted">{product.categoryName ?? 'Uncategorised'}</td>
+                    <td className="px-4 py-3 text-ink-muted">{product.categoryName ?? t('uncategorised')}</td>
                     <td className="px-4 py-3 font-medium text-ink tnum">{formatAud(product.price)}</td>
                     <td className="px-4 py-3">
                       <Badge tone={product.stockQuantity === 0 ? 'danger' : product.stockQuantity <= 10 ? 'warning' : 'neutral'}>
-                        {product.stockQuantity === 0 ? 'Out of stock' : product.stockQuantity}
+                        {product.stockQuantity === 0 ? t('outOfStock') : product.stockQuantity}
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge tone={product.isActive ? 'success' : 'neutral'}>{product.isActive ? 'Active' : 'Inactive'}</Badge>
+                      <Badge tone={product.isActive ? 'success' : 'neutral'}>{product.isActive ? t('active') : t('inactive')}</Badge>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-2">
-                        <Button variant="secondary" size="sm" onClick={() => openEdit(product)}>Edit</Button>
+                        <Button variant="secondary" size="sm" onClick={() => openEdit(product)}>{tc('edit')}</Button>
                         {product.isActive && (
                           <Button variant="ghost" size="sm" className="text-danger" onClick={() => deactivate(product)}>
-                            Deactivate
+                            {t('deactivate')}
                           </Button>
                         )}
                       </div>
@@ -377,16 +380,16 @@ export default function AdminProductsPage() {
             </table>
           </div>
           {!loading && products.length === 0 && (
-            <div className="p-8 text-center text-sm text-ink-muted">No products match these filters.</div>
+            <div className="p-8 text-center text-sm text-ink-muted">{t('noResults')}</div>
           )}
           {!loading && totalPages > 1 && (
             <div className="flex items-center justify-between border-t border-border px-4 py-3">
               <Button variant="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>
-                Previous
+                {t('previous')}
               </Button>
-              <span className="text-xs text-ink-muted">Page {page} of {totalPages}</span>
+              <span className="text-xs text-ink-muted">{t('pageOf', { page, total: totalPages })}</span>
               <Button variant="secondary" size="sm" disabled={page >= totalPages} onClick={() => setPage((value) => value + 1)}>
-                Next
+                {t('next')}
               </Button>
             </div>
           )}
@@ -398,16 +401,16 @@ export default function AdminProductsPage() {
           <Card className="w-full max-w-3xl p-5 sm:p-6">
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
-                <h2 id="product-form-title" className="text-xl font-semibold text-ink">{editing ? 'Edit product' : 'Add product'}</h2>
-                <p className="text-sm text-ink-muted">Changes to active products appear in the storefront immediately.</p>
+                <h2 id="product-form-title" className="text-xl font-semibold text-ink">{editing ? t('editProduct') : t('addProductTitle')}</h2>
+                <p className="text-sm text-ink-muted">{t('formSubtitle')}</p>
               </div>
-              <button onClick={closeForm} className="text-2xl leading-none text-ink-muted hover:text-ink" aria-label="Close">×</button>
+              <button onClick={closeForm} className="text-2xl leading-none text-ink-muted hover:text-ink" aria-label={t('close')}>×</button>
             </div>
 
             <form onSubmit={submitProduct} className="space-y-5">
               <div className="grid gap-4 sm:grid-cols-2">
                 <Input
-                  label="Name"
+                  label={t('name')}
                   required
                   minLength={2}
                   maxLength={300}
@@ -415,15 +418,15 @@ export default function AdminProductsPage() {
                   onChange={(event) => setForm((value) => ({ ...value, name: event.target.value, ...(!editing ? { slug: slugify(event.target.value) } : {}) }))}
                 />
                 <Input
-                  label="Slug"
+                  label={t('slug')}
                   required
                   pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
                   value={form.slug}
                   onChange={(event) => setForm((value) => ({ ...value, slug: event.target.value }))}
-                  helperText="Lowercase letters, numbers and hyphens."
+                  helperText={t('slugHelper')}
                 />
                 <Input
-                  label="Price"
+                  label={t('price')}
                   type="number"
                   required
                   min="0.01"
@@ -432,7 +435,7 @@ export default function AdminProductsPage() {
                   onChange={(event) => setForm((value) => ({ ...value, price: event.target.value }))}
                 />
                 <Input
-                  label="Stock quantity"
+                  label={t('stockQuantity')}
                   type="number"
                   required
                   min="0"
@@ -441,7 +444,7 @@ export default function AdminProductsPage() {
                   onChange={(event) => setForm((value) => ({ ...value, stockQuantity: event.target.value }))}
                 />
                 <Input
-                  label="Currency"
+                  label={t('currency')}
                   required
                   minLength={3}
                   maxLength={3}
@@ -449,21 +452,21 @@ export default function AdminProductsPage() {
                   onChange={(event) => setForm((value) => ({ ...value, currency: event.target.value.toUpperCase() }))}
                 />
                 <div className="space-y-1.5">
-                  <label htmlFor="product-category" className="block text-xs font-semibold uppercase tracking-wider text-ink-muted">Category</label>
+                  <label htmlFor="product-category" className="block text-xs font-semibold uppercase tracking-wider text-ink-muted">{t('category')}</label>
                   <select
                     id="product-category"
                     value={form.categoryId}
                     onChange={(event) => setForm((value) => ({ ...value, categoryId: event.target.value }))}
                     className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
                   >
-                    <option value="">Uncategorised</option>
+                    <option value="">{t('uncategorised')}</option>
                     {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
                   </select>
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor="product-description" className="block text-xs font-semibold uppercase tracking-wider text-ink-muted">Description</label>
+                <label htmlFor="product-description" className="block text-xs font-semibold uppercase tracking-wider text-ink-muted">{t('description')}</label>
                 <textarea
                   id="product-description"
                   rows={3}
@@ -475,22 +478,22 @@ export default function AdminProductsPage() {
               </div>
 
               <Input
-                label="Tags"
+                label={t('tags')}
                 value={form.tags}
                 onChange={(event) => setForm((value) => ({ ...value, tags: event.target.value }))}
-                helperText="Comma-separated, for example: monitor, gaming, usb-c"
+                helperText={t('tagsHelper')}
               />
 
               <Input
-                label="Image URL"
+                label={t('imageUrl')}
                 type="url"
                 value={form.imageUrl}
                 onChange={(event) => setForm((value) => ({ ...value, imageUrl: event.target.value }))}
-                helperText="URL to product photo, or upload a file below"
+                helperText={t('imageUrlHelper')}
               />
 
               <div className="space-y-1.5">
-                <label htmlFor="product-image-upload" className="block text-xs font-semibold uppercase tracking-wider text-ink-muted">Or upload an image</label>
+                <label htmlFor="product-image-upload" className="block text-xs font-semibold uppercase tracking-wider text-ink-muted">{t('uploadImage')}</label>
                 <input
                   id="product-image-upload"
                   type="file"
@@ -499,11 +502,11 @@ export default function AdminProductsPage() {
                   disabled={uploading}
                   className="block w-full text-sm text-ink-muted file:mr-3 file:rounded-md file:border-0 file:bg-accent file:px-4 file:py-2 file:text-sm file:font-semibold file:text-accent-contrast hover:file:bg-accent-hover disabled:opacity-40"
                 />
-                {uploading && <p className="text-xs text-ink-muted">Uploading…</p>}
+                {uploading && <p className="text-xs text-ink-muted">{t('uploading')}</p>}
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor="product-metadata" className="block text-xs font-semibold uppercase tracking-wider text-ink-muted">Metadata JSON</label>
+                <label htmlFor="product-metadata" className="block text-xs font-semibold uppercase tracking-wider text-ink-muted">{t('metadataJson')}</label>
                 <textarea
                   id="product-metadata"
                   rows={5}
@@ -522,14 +525,14 @@ export default function AdminProductsPage() {
                   onChange={(event) => setForm((value) => ({ ...value, isActive: event.target.checked }))}
                   className="h-4 w-4 rounded border-border text-accent"
                 />
-                Active and visible in the storefront
+                {t('activeVisible')}
               </label>
 
               {formError && <p className="rounded-lg bg-bg-subtle px-3 py-2 text-sm text-danger">{formError}</p>}
 
               <div className="flex justify-end gap-3 border-t border-border pt-5">
-                <Button type="button" variant="secondary" onClick={closeForm} disabled={submitting}>Cancel</Button>
-                <Button type="submit" disabled={submitting}>{submitting ? 'Saving…' : editing ? 'Save changes' : 'Create product'}</Button>
+                <Button type="button" variant="secondary" onClick={closeForm} disabled={submitting}>{tc('cancel')}</Button>
+                <Button type="submit" disabled={submitting}>{submitting ? t('saving') : editing ? t('saveChanges') : t('createProduct')}</Button>
               </div>
             </form>
           </Card>

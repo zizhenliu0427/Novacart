@@ -15,6 +15,7 @@ public class GatewayRoutingTests
         "/api/cart/",
         "/api/checkout/",
         "/api/orders/",
+        "/api/support/",
         "/api/admin/system/",
         "/api/health",
     ];

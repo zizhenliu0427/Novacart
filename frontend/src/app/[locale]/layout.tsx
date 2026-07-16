@@ -1,8 +1,11 @@
 import { NextIntlClientProvider } from 'next-intl';
-import { getMessages, setRequestLocale } from 'next-intl/server';
+import { getMessages, getTranslations, setRequestLocale } from 'next-intl/server';
+import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
+import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { routing } from '@/i18n/routing';
+import { buildHreflangAlternates } from '@/lib/seo';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { CartProvider } from '@/contexts/CartContext';
@@ -10,6 +13,7 @@ import { WishlistProvider } from '@/contexts/WishlistContext';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { HeaderNav } from '@/components/HeaderNav';
 import { Footer } from '@/components/Footer';
+import { ChatWidget } from '@/components/ChatWidget';
 import '../globals.css';
 
 const inter = Inter({
@@ -20,6 +24,25 @@ const inter = Inter({
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
+}
+
+export async function generateMetadata({
+  params: { locale },
+}: {
+  params: { locale: string };
+}): Promise<Metadata> {
+  const t = await getTranslations({ locale, namespace: 'home' });
+  const path = headers().get('x-next-pathname') ?? '/';
+  const alternates = buildHreflangAlternates(path, locale);
+
+  return {
+    title: {
+      default: t('metaTitle'),
+      template: `%s · Novacart`,
+    },
+    description: t('metaDescription'),
+    alternates,
+  };
 }
 
 export default async function LocaleLayout({
@@ -50,6 +73,7 @@ export default async function LocaleLayout({
                     <footer className="mt-16 border-t border-border">
                       <Footer />
                     </footer>
+                    <ChatWidget />
                   </ToastProvider>
                 </WishlistProvider>
               </CartProvider>

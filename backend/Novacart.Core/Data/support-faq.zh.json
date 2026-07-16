@@ -1,0 +1,27 @@
+[
+  {
+    "question": "配送需要多久？",
+    "answer": "澳大利亚境内标准配送通常需要 3–7 个工作日。结账时可能提供加急选项。",
+    "keywords": ["配送", "发货", "多久", "到货", "物流", "shipping", "delivery"]
+  },
+  {
+    "question": "退货政策是什么？",
+    "answer": "符合条件的商品可在收货后 30 天内申请退货（未使用状态）。可在订单历史中发起，或联系客服。",
+    "keywords": ["退货", "退款", "换货", "政策", "return", "refund"]
+  },
+  {
+    "question": "支持哪些支付方式？",
+    "answer": "我们通过 Stripe 接受主流银行卡（Visa、Mastercard、Amex）。默认以澳元（AUD）标价。",
+    "keywords": ["支付", "付款", "银行卡", "stripe", "payment"]
+  },
+  {
+    "question": "如何查看订单状态？",
+    "answer": "登录后在「订单」页面查看状态更新。下单成功后也会收到确认邮件。",
+    "keywords": ["订单", "跟踪", "状态", "在哪", "track", "order"]
+  },
+  {
+    "question": "是否支持国际配送？",
+    "answer": "本演示商城主要面向澳大利亚境内配送，演示环境未开启国际配送。",
+    "keywords": ["国际", "海外", "国外", "international"]
+  }
+]

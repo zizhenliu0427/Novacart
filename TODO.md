@@ -226,21 +226,25 @@ Typical **Java / Spring Cloud** mall architecture maps roughly as follows (Novac
 
 ---
 
-## PE-9 — AI Chatbot (Low Priority)
+## PE-9 — AI Chatbot — ✅
 
-**Purpose:** Customer service bot via OpenAI API or Ollama (local LLM).
+> **Status:** **Complete** (2026-07-16). See [docs/PE9-AI-CHATBOT.md](docs/PE9-AI-CHATBOT.md).
+
+**Purpose:** Customer service bot via OpenAI API, Claude (Anthropic), or Ollama (local LLM).
 
 **Trigger:** Product requirement for automated support (order status, shipping, returns FAQ).
 
-- [ ] Choose provider: OpenAI API vs self-hosted Ollama
-- [ ] Backend proxy endpoint (never expose API keys to browser)
-- [ ] Context injection: user's recent orders, product catalogue snippets (RAG optional)
-- [ ] Frontend chat widget (floating panel, rate limit, fallback to static FAQ)
-- [ ] Privacy: PII redaction, opt-in, logging policy
+- [x] Multi-provider abstraction: OpenAI, Claude, Ollama (`IChatCompletionClient`)
+- [x] Backend proxy endpoint (`POST /api/support/chat` — keys never exposed to browser)
+- [x] Context injection: FAQ + signed-in user's recent orders (RAG optional follow-up)
+- [x] Frontend chat widget (floating panel, rate limit, FAQ fallback)
+- [x] Privacy: PII redaction, opt-in, metadata-only logging
 
 ---
 
 ## PE-10 — Internationalisation (i18n) — ✅
+
+> **Status:** **Complete** (2026-07-16). See [docs/PE10-I18N.md](docs/PE10-I18N.md).
 
 **Purpose:** Bilingual UI (Chinese/English) with URL-based language routing.
 
@@ -252,8 +256,8 @@ Typical **Java / Spring Cloud** mall architecture maps roughly as follows (Novac
 - [x] Customer shell translated: home, auth, nav, footer, admin nav, ProductCard, offline, not-found.
 - [x] `formatPrice` uses `en-AU` / `zh-CN` Intl locales; currency remains AUD.
 - [x] Middleware combines i18n routing with existing auth guards.
-- [ ] Translate remaining admin page body copy (products/orders/pricing forms — optional follow-up).
-- [ ] `hreflang` SEO tags (optional follow-up).
+- [x] Admin page body copy: products, orders, pricing forms (`adminProducts`, `adminOrders`, `adminPricing`).
+- [x] `hreflang` SEO tags via `generateMetadata` + `buildHreflangAlternates` (per-path via middleware header).
 
 ---
 

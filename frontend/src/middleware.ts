@@ -35,7 +35,11 @@ export default function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  return handleI18nRouting(request);
+  const response = handleI18nRouting(request);
+  if (response) {
+    response.headers.set('x-next-pathname', path);
+  }
+  return response;
 }
 
 export const config = {

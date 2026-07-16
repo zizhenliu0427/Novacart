@@ -919,9 +919,9 @@ else
 
 **结论：** 对涉及外部系统的功能（S3、SMTP、webhook、支付网关），单元测试全绿是必要但不充分的。在宣布"完成"之前，至少做一次完整的端到端往返（presign → PUT → GET）对着真实（或 LocalStack 模拟的）服务。
 
-### 2026-07-16：PE-1 ~ PE-8 — 微服务 → 线程池调优
+### 2026-07-16：PE-1 ~ PE-10 — 微服务 → 国际化
 
-> **Planned Enhancements** 实施记录（PE-1 ~ PE-8）：技术栈、踩坑与修复。任务清单：[TODO.md](TODO.md)、[HANDOFF.md §11](HANDOFF.md#11-planned-enhancements-scaling-tail--not-scheduled)。设计文档：[MICROSERVICES-PE1.md](docs/MICROSERVICES-PE1.md)、[PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md)、[PE4-PRODUCTION-HARDENING.md](docs/PE4-PRODUCTION-HARDENING.md)、[PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md)、[PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md)、[PE8-THREAD-POOL.md](docs/PE8-THREAD-POOL.md)。
+> **Planned Enhancements** 实施记录（PE-1 ~ PE-10）：技术栈、踩坑与修复。任务清单：[TODO.md](TODO.md)、[HANDOFF.md §11](HANDOFF.md#11-planned-enhancements-scaling-tail--not-scheduled)。设计文档：[MICROSERVICES-PE1.md](docs/MICROSERVICES-PE1.md)、[PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md)、[PE4-PRODUCTION-HARDENING.md](docs/PE4-PRODUCTION-HARDENING.md)、[PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md)、[PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md)、[PE8-THREAD-POOL.md](docs/PE8-THREAD-POOL.md)、[PE10-I18N.md](docs/PE10-I18N.md)。
 
 #### 技术栈一览（PE-1 ~ PE-7）
 
@@ -935,6 +935,8 @@ else
 | **PE-6** | 购物车缓存 | **Redis** 快照 · Postgres 为真相源 · write-through · 默认 `CartRedis.Enabled=false` |
 | **PE-7** | 订单 SQL 分片 | **UserId FNV-1a hash** · `novacart_commerce_0/1` · `order_shard_routes` · 默认 `OrderSharding.Enabled=false` |
 | **PE-8** | 线程池调优 | **`ThreadPool.SetMinThreads`** · 可选 **Stripe webhook 队列** · 默认 `ThreadPool.Enabled=false` |
+| **PE-10** | 国际化 | **`next-intl`** · `/en/` + `/zh/` · admin 表单命名空间 · **hreflang**（middleware pathname） |
+| **PE-9** | AI 客服 | **`IChatCompletionClient`** · OpenAI / Claude / Ollama · FAQ 回退 · opt-in 组件 |
 
 #### 0. 流程与验证类错误（贯穿 PE-1 ~ PE-7）
 
@@ -1075,7 +1077,39 @@ else
 
 **结论：** [docs/PE8-THREAD-POOL.md](docs/PE8-THREAD-POOL.md)。默认 `ThreadPool.Enabled=false`。
 
-#### 8. 「测试通过」仍证明不了什么（PE-1 ~ PE-8）
+#### 8. PE-10 — 国际化（i18n）✅
+
+**技术栈：** `next-intl` · `/en/` + `/zh/` 路由段 · `messages/en.json` + `messages/zh.json` · `buildHreflangAlternates` · middleware `x-next-pathname`。
+
+**做了什么：** 顾客端 + admin 商品/订单/定价表单文案；`generateMetadata` 输出 canonical + `hreflang`；`formatPrice` 按 locale 格式化；`seo.test.ts` 单元测试。
+
+**踩坑：**
+
+| 坑 | 原因 | 解决方案 |
+|---|---|---|
+| **layout 拿不到 pathname** | 根 layout 无路径 | middleware 设置 `x-next-pathname` |
+| **生产 canonical 错误** | 未配置站点 URL | 设置 `NEXT_PUBLIC_SITE_URL` |
+| **商品名未翻译** | API 原样存储 | 预期边界 — 仅 UI 文案 i18n |
+
+**结论：** [docs/PE10-I18N.md](docs/PE10-I18N.md)。analytics/system 页可能保留英文技术标签。
+
+#### 9. PE-9 — AI 客服 ✅
+
+**技术栈：** `IChatCompletionClient` · OpenAI / Claude / Ollama · FAQ JSON · 订单上下文 · `ChatWidget`。
+
+**做了什么：** 后端多 Provider 代理；登录用户注入最近 3 笔订单摘要；PII 脱敏 + opt-in；网关对 `/api/support/*` 限流。
+
+**踩坑：**
+
+| 坑 | 原因 | 解决方案 |
+|---|---|---|
+| **密钥暴露** | 前端直连 LLM | 必须走 `POST /api/support/chat` |
+| **Claude system** | Anthropic 独立 `system` 字段 | `ClaudeChatClient` 单独提取 |
+| **游客 401 跳转** | `apiCall` 默认跳登录 | chat 使用 `optionalAuth: true` |
+
+**结论：** [docs/PE9-AI-CHATBOT.md](docs/PE9-AI-CHATBOT.md)。默认 `Chatbot.Enabled=false`；RAG 为可选后续。
+
+#### 10. 「测试通过」仍证明不了什么（PE-1 ~ PE-10）
 
 与 S3 那次同一主题：
 

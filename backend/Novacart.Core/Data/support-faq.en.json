@@ -1,0 +1,27 @@
+[
+  {
+    "question": "How long does shipping take?",
+    "answer": "Standard shipping within Australia usually takes 3–7 business days. Express options may be available at checkout.",
+    "keywords": ["shipping", "delivery", "how long", "arrive", "dispatch"]
+  },
+  {
+    "question": "What is your returns policy?",
+    "answer": "You may return eligible items within 30 days of delivery in unused condition. Start a return from your order history or contact support.",
+    "keywords": ["return", "refund", "exchange", "policy"]
+  },
+  {
+    "question": "Which payment methods do you accept?",
+    "answer": "We accept major cards via Stripe (Visa, Mastercard, Amex). All prices are shown in AUD unless you change display currency.",
+    "keywords": ["payment", "pay", "card", "stripe", "visa"]
+  },
+  {
+    "question": "How can I track my order?",
+    "answer": "Sign in and open Orders to see status updates. You'll also receive email confirmation when your order is placed.",
+    "keywords": ["track", "tracking", "order status", "where is"]
+  },
+  {
+    "question": "Do you ship internationally?",
+    "answer": "This demo storefront focuses on Australian delivery. International shipping is not enabled in the demo environment.",
+    "keywords": ["international", "overseas", "abroad", "country"]
+  }
+]

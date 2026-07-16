@@ -17,6 +17,7 @@ using Novacart.Api.Services.Payments;
 using Novacart.Api.Search;
 using Novacart.Api.Infrastructure.Sharding;
 using Novacart.Api.Infrastructure.Threading;
+using Novacart.Api.Infrastructure;
 using Stripe;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -90,6 +91,8 @@ builder.Services.AddHttpClient<ICurrencyService, CurrencyService>(client =>
 builder.Services.AddSingleton<EmailQueue>();
 builder.Services.AddSingleton<IEmailQueue>(sp => sp.GetRequiredService<EmailQueue>());
 builder.Services.AddHostedService<EmailBackgroundWorker>();
+
+builder.Services.AddNovacartChatSupport(builder.Configuration);
 
 // S3 object storage (LocalStack in dev, real AWS in prod — config-driven).
 builder.Services.AddSingleton<Novacart.Api.Storage.IS3StorageService, Novacart.Api.Storage.S3StorageService>();
@@ -281,6 +284,7 @@ app.UseCors("AllowFrontend");
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapControllers();
 

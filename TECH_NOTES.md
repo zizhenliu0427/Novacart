@@ -920,9 +920,9 @@ The single biggest lesson from this session: **130/130 unit tests passing did no
 
 **Takeaway:** For features involving external systems (S3, SMTP, webhooks, payment gateways), a green unit-test suite is necessary but not sufficient. Always do at least one end-to-end round-trip (presign → PUT → GET) against a real (or LocalStack-emulated) service before declaring "done."
 
-### 2026-07-16: PE-1 through PE-8 — Microservices → Thread Pool Tuning
+### 2026-07-16: PE-1 through PE-10 — Microservices → i18n
 
-> Record of the **Planned Enhancements** rollout (PE-1 ~ PE-8): tech stacks, mistakes, and fixes. Canonical task lists: [TODO.md](TODO.md), [HANDOFF.md §11](HANDOFF.md#11-planned-enhancements-scaling-tail--not-scheduled). Design docs: [MICROSERVICES-PE1.md](docs/MICROSERVICES-PE1.md), [PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md), [PE4-PRODUCTION-HARDENING.md](docs/PE4-PRODUCTION-HARDENING.md), [PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md), [PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md), [PE8-THREAD-POOL.md](docs/PE8-THREAD-POOL.md).
+> Record of the **Planned Enhancements** rollout (PE-1 ~ PE-10): tech stacks, mistakes, and fixes. Canonical task lists: [TODO.md](TODO.md), [HANDOFF.md §11](HANDOFF.md#11-planned-enhancements-scaling-tail--not-scheduled). Design docs: [MICROSERVICES-PE1.md](docs/MICROSERVICES-PE1.md), [PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md), [PE4-PRODUCTION-HARDENING.md](docs/PE4-PRODUCTION-HARDENING.md), [PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md), [PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md), [PE8-THREAD-POOL.md](docs/PE8-THREAD-POOL.md), [PE10-I18N.md](docs/PE10-I18N.md).
 
 #### Tech stack overview (PE-1 ~ PE-7)
 
@@ -936,6 +936,8 @@ The single biggest lesson from this session: **130/130 unit tests passing did no
 | **PE-6** | Cart cache | **Redis** JSON snapshot · Postgres source of truth · write-through · `CartRedis.Enabled=false` default |
 | **PE-7** | Order SQL sharding | **UserId FNV-1a hash** · `novacart_commerce_0/1` · `order_shard_routes` routing table · `IShardedOrderDb` · `OrderSharding.Enabled=false` default |
 | **PE-8** | Thread pool tuning | **`ThreadPool.SetMinThreads`** · optional **Stripe webhook queue** · OTel `Novacart.Runtime` · `ThreadPool.Enabled=false` default |
+| **PE-10** | Internationalisation | **`next-intl`** · `/en/` + `/zh/` · admin form namespaces · **`hreflang`** via middleware pathname header |
+| **PE-9** | AI chatbot | **`IChatCompletionClient`** · OpenAI / Claude / Ollama · FAQ fallback · opt-in widget |
 
 #### 0. Process & verification mistakes (cross-cutting, PE-1 ~ PE-7)
 
@@ -1085,7 +1087,39 @@ The single biggest lesson from this session: **130/130 unit tests passing did no
 
 **Takeaway:** See [docs/PE8-THREAD-POOL.md](docs/PE8-THREAD-POOL.md). Default `ThreadPool.Enabled=false`.
 
-#### 8. What "tests pass" still didn't prove (PE-1 ~ PE-8)
+#### 8. PE-10 — Internationalisation (i18n) ✅
+
+**Stack:** `next-intl` · `/en/` + `/zh/` App Router segments · `messages/en.json` + `messages/zh.json` · `buildHreflangAlternates` · middleware `x-next-pathname`.
+
+**What was done:** Customer shell + admin products/orders/pricing forms translated; `generateMetadata` emits canonical + `hreflang` (`en-AU`, `zh-CN`, `x-default`); `formatPrice` uses locale-aware Intl; unit tests in `seo.test.ts`.
+
+**Pitfalls:**
+
+| Pitfall | Cause | Solution |
+|---|---|---|
+| **Per-path hreflang from layout only** | Root layout lacks pathname | Middleware sets `x-next-pathname` for `generateMetadata` |
+| **Wrong canonical in production** | Missing site URL | Set `NEXT_PUBLIC_SITE_URL` in production env |
+| **API product names not translated** | Data stored as-is | Expected boundary — only UI chrome is i18n |
+
+**Takeaway:** See [docs/PE10-I18N.md](docs/PE10-I18N.md). Analytics/system admin pages may retain English technical labels.
+
+#### 9. PE-9 — AI chatbot ✅
+
+**Stack:** `IChatCompletionClient` · OpenAI / Claude / Ollama · FAQ JSON · order context · `ChatWidget`.
+
+**What was done:** Backend proxy with multi-provider switch; signed-in users get last 3 order summaries; PII redaction + opt-in; gateway rate limit on `/api/support/*`.
+
+**Pitfalls:**
+
+| Pitfall | Cause | Solution |
+|---|---|---|
+| **API keys in frontend** | Direct LLM calls from browser | Always proxy via `POST /api/support/chat` |
+| **Claude system role** | Anthropic uses separate `system` field | Extract system message in `ClaudeChatClient` |
+| **Guest 401 redirect** | `apiCall` bailToLogin | `optionalAuth: true` on chat endpoints |
+
+**Takeaway:** See [docs/PE9-AI-CHATBOT.md](docs/PE9-AI-CHATBOT.md). Default `Chatbot.Enabled=false`; RAG optional follow-up.
+
+#### 10. What "tests pass" still didn't prove (PE-1 ~ PE-10)
 
 Same theme as the S3 session:
 

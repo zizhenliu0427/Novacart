@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -21,10 +22,6 @@ type StatusFilter = 'all' | 'pending' | 'paid' | 'processing' | 'shipped' | 'com
 
 const ORDER_STATUSES: StatusFilter[] = ['all', 'pending', 'paid', 'processing', 'shipped', 'completed', 'cancelled'];
 
-/**
- * Next legal status for a given current status. Mirrors the backend state machine.
- * `null` means the status is terminal (no forward move available).
- */
 const NEXT_STATUS: Record<string, string | null> = {
   pending: 'paid',
   paid: 'processing',
@@ -48,7 +45,17 @@ function statusTone(status: string): BadgeTone {
   }
 }
 
+const STATUS_I18N: Record<string, 'statusPending' | 'statusPaid' | 'statusProcessing' | 'statusShipped' | 'statusCompleted' | 'statusCancelled'> = {
+  pending: 'statusPending',
+  paid: 'statusPaid',
+  processing: 'statusProcessing',
+  shipped: 'statusShipped',
+  completed: 'statusCompleted',
+  cancelled: 'statusCancelled',
+};
+
 export default function AdminOrdersPage() {
+  const t = useTranslations('adminOrders');
   const { user } = useAuth();
   const { formatAud } = useFormatAudPrice();
   const [orders, setOrders] = useState<AdminOrderSummary[]>([]);
@@ -62,11 +69,16 @@ export default function AdminOrdersPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // Detail modal state
   const [detail, setDetail] = useState<AdminOrderDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [advancing, setAdvancing] = useState(false);
+
+  const labelStatus = (s: string) => {
+    if (s === 'all') return t('statusAll');
+    const key = STATUS_I18N[s];
+    return key ? t(key) : s;
+  };
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -90,11 +102,11 @@ export default function AdminOrdersPage() {
       setTotalCount(data.totalCount);
       setTotalPages(data.totalPages);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load orders.');
+      setError(err instanceof Error ? err.message : t('errLoad'));
     } finally {
       setLoading(false);
     }
-  }, [user, page, debouncedQuery, status]);
+  }, [user, page, debouncedQuery, status, t]);
 
   useEffect(() => {
     loadOrders();
@@ -109,7 +121,7 @@ export default function AdminOrdersPage() {
       const data = await apiCall<AdminOrderDetail>(`/admin/orders/${orderId}`);
       setDetail(data);
     } catch (err) {
-      setDetailError(err instanceof Error ? err.message : 'Failed to load order detail.');
+      setDetailError(err instanceof Error ? err.message : t('errDetail'));
     } finally {
       setDetailLoading(false);
     }
@@ -133,10 +145,10 @@ export default function AdminOrdersPage() {
         body: { toStatus: next } satisfies UpdateOrderStatusBody,
       });
       setDetail(updated);
-      setNotice(`Order ${updated.orderNumber} → ${updated.currentStatus}.`);
+      setNotice(t('noticeAdvanced', { number: updated.orderNumber, status: labelStatus(updated.currentStatus) }));
       await loadOrders();
     } catch (err) {
-      setDetailError(err instanceof Error ? err.message : 'Failed to advance order status.');
+      setDetailError(err instanceof Error ? err.message : t('errAdvance'));
     } finally {
       setAdvancing(false);
     }
@@ -144,7 +156,7 @@ export default function AdminOrdersPage() {
 
   async function cancelOrder() {
     if (!user || !detail) return;
-    if (!window.confirm(`Cancel order ${detail.orderNumber}? This cannot be undone.`)) return;
+    if (!window.confirm(t('confirmCancel', { number: detail.orderNumber }))) return;
     setAdvancing(true);
     setDetailError(null);
     try {
@@ -153,10 +165,10 @@ export default function AdminOrdersPage() {
         body: { toStatus: 'cancelled' } satisfies UpdateOrderStatusBody,
       });
       setDetail(updated);
-      setNotice(`Order ${updated.orderNumber} cancelled.`);
+      setNotice(t('noticeCancelled', { number: updated.orderNumber }));
       await loadOrders();
     } catch (err) {
-      setDetailError(err instanceof Error ? err.message : 'Failed to cancel order.');
+      setDetailError(err instanceof Error ? err.message : t('errCancel'));
     } finally {
       setAdvancing(false);
     }
@@ -165,16 +177,16 @@ export default function AdminOrdersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">Orders</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">{t('title')}</h1>
         <p className="mt-1 text-sm text-ink-muted">
-          {loading ? 'Loading orders…' : `${totalCount} order${totalCount === 1 ? '' : 's'}`}
+          {loading ? t('loadingOrders') : t('orderCount', { count: totalCount })}
         </p>
       </div>
 
       {notice && (
         <div className="flex items-center justify-between rounded-lg border border-border bg-bg-subtle px-4 py-3 text-sm text-success">
           <span>{notice}</span>
-          <button onClick={() => setNotice(null)} className="text-ink-muted hover:text-ink" aria-label="Dismiss">×</button>
+          <button onClick={() => setNotice(null)} className="text-ink-muted hover:text-ink" aria-label={t('dismiss')}>×</button>
         </div>
       )}
 
@@ -184,24 +196,24 @@ export default function AdminOrdersPage() {
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search order number or customer email…"
-            aria-label="Search orders"
+            placeholder={t('searchPlaceholder')}
+            aria-label={t('searchAria')}
           />
         </div>
         <select
           value={status}
           onChange={(event) => { setStatus(event.target.value as StatusFilter); setPage(1); }}
           className="h-10 rounded-lg border border-border bg-surface px-3 text-sm text-ink focus:border-accent focus:outline-none"
-          aria-label="Filter by status"
+          aria-label={t('filterStatusAria')}
         >
           {ORDER_STATUSES.map((s) => (
-            <option key={s} value={s}>{s === 'all' ? 'All statuses' : s.charAt(0).toUpperCase() + s.slice(1)}</option>
+            <option key={s} value={s}>{labelStatus(s)}</option>
           ))}
         </select>
       </div>
 
       {error && (
-        <EmptyState icon={<GridIcon />} title="Couldn't load orders" description={error} />
+        <EmptyState icon={<GridIcon />} title={t('loadErrorTitle')} description={error} />
       )}
 
       {!error && (
@@ -210,13 +222,13 @@ export default function AdminOrdersPage() {
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead className="border-b border-border bg-bg-subtle text-xs uppercase tracking-wide text-ink-muted">
                 <tr>
-                  <th className="px-4 py-3 font-semibold">Order</th>
-                  <th className="px-4 py-3 font-semibold">Customer</th>
-                  <th className="px-4 py-3 font-semibold">Total</th>
-                  <th className="px-4 py-3 font-semibold">Items</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="px-4 py-3 font-semibold">Date</th>
-                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
+                  <th className="px-4 py-3 font-semibold">{t('colOrder')}</th>
+                  <th className="px-4 py-3 font-semibold">{t('colCustomer')}</th>
+                  <th className="px-4 py-3 font-semibold">{t('colTotal')}</th>
+                  <th className="px-4 py-3 font-semibold">{t('colItems')}</th>
+                  <th className="px-4 py-3 font-semibold">{t('colStatus')}</th>
+                  <th className="px-4 py-3 font-semibold">{t('colDate')}</th>
+                  <th className="px-4 py-3 text-right font-semibold">{t('colActions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -232,14 +244,14 @@ export default function AdminOrdersPage() {
                     <td className="px-4 py-3 font-medium text-ink tnum">{formatAud(order.total)}</td>
                     <td className="px-4 py-3 text-ink-muted">{order.itemCount}</td>
                     <td className="px-4 py-3">
-                      <Badge tone={statusTone(order.currentStatus)}>{order.currentStatus}</Badge>
+                      <Badge tone={statusTone(order.currentStatus)}>{labelStatus(order.currentStatus)}</Badge>
                     </td>
                     <td className="px-4 py-3 text-ink-muted">
                       {new Date(order.createdAt).toLocaleDateString()}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end">
-                        <Button variant="secondary" size="sm" onClick={() => openDetail(order.id)}>View</Button>
+                        <Button variant="secondary" size="sm" onClick={() => openDetail(order.id)}>{t('view')}</Button>
                       </div>
                     </td>
                   </tr>
@@ -248,16 +260,16 @@ export default function AdminOrdersPage() {
             </table>
           </div>
           {!loading && orders.length === 0 && (
-            <div className="p-8 text-center text-sm text-ink-muted">No orders match these filters.</div>
+            <div className="p-8 text-center text-sm text-ink-muted">{t('noResults')}</div>
           )}
           {!loading && totalPages > 1 && (
             <div className="flex items-center justify-between border-t border-border px-4 py-3">
               <Button variant="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>
-                Previous
+                {t('previous')}
               </Button>
-              <span className="text-xs text-ink-muted">Page {page} of {totalPages}</span>
+              <span className="text-xs text-ink-muted">{t('pageOf', { page, total: totalPages })}</span>
               <Button variant="secondary" size="sm" disabled={page >= totalPages} onClick={() => setPage((value) => value + 1)}>
-                Next
+                {t('next')}
               </Button>
             </div>
           )}
@@ -274,19 +286,19 @@ export default function AdminOrdersPage() {
                   {detail.customerName || detail.customerEmail} · {new Date(detail.createdAt).toLocaleString()}
                 </p>
               </div>
-              <button onClick={closeDetail} className="text-2xl leading-none text-ink-muted hover:text-ink" aria-label="Close">×</button>
+              <button onClick={closeDetail} className="text-2xl leading-none text-ink-muted hover:text-ink" aria-label={t('close')}>×</button>
             </div>
 
-            {detailLoading && <p className="text-sm text-ink-muted">Loading…</p>}
+            {detailLoading && <p className="text-sm text-ink-muted">{t('loading')}</p>}
             {detailError && <p className="rounded-lg bg-bg-subtle px-3 py-2 text-sm text-danger">{detailError}</p>}
 
             {!detailLoading && (
               <>
                 <div className="mb-5 flex items-center gap-3">
-                  <Badge tone={statusTone(detail.currentStatus)}>{detail.currentStatus}</Badge>
+                  <Badge tone={statusTone(detail.currentStatus)}>{labelStatus(detail.currentStatus)}</Badge>
                   {detail.updatedAt && (
                     <span className="text-xs text-ink-muted">
-                      Updated {new Date(detail.updatedAt).toLocaleString()}
+                      {t('updatedAt', { date: new Date(detail.updatedAt).toLocaleString() })}
                     </span>
                   )}
                 </div>
@@ -295,10 +307,10 @@ export default function AdminOrdersPage() {
                   <table className="w-full text-left text-sm">
                     <thead className="bg-bg-subtle text-xs uppercase tracking-wide text-ink-muted">
                       <tr>
-                        <th className="px-3 py-2 font-semibold">Item</th>
-                        <th className="px-3 py-2 text-right font-semibold">Price</th>
-                        <th className="px-3 py-2 text-right font-semibold">Qty</th>
-                        <th className="px-3 py-2 text-right font-semibold">Total</th>
+                        <th className="px-3 py-2 font-semibold">{t('colItem')}</th>
+                        <th className="px-3 py-2 text-right font-semibold">{t('colPrice')}</th>
+                        <th className="px-3 py-2 text-right font-semibold">{t('colQty')}</th>
+                        <th className="px-3 py-2 text-right font-semibold">{t('colTotal')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
@@ -316,31 +328,33 @@ export default function AdminOrdersPage() {
 
                 <div className="mb-5 space-y-1 text-sm">
                   <div className="flex justify-between text-ink-muted">
-                    <span>Subtotal</span><span className="tnum">{formatAud(detail.subtotal)}</span>
+                    <span>{t('subtotal')}</span><span className="tnum">{formatAud(detail.subtotal)}</span>
                   </div>
                   <div className="flex justify-between text-ink-muted">
-                    <span>Shipping</span><span className="tnum">{formatAud(detail.shippingCost)}</span>
+                    <span>{t('shipping')}</span><span className="tnum">{formatAud(detail.shippingCost)}</span>
                   </div>
                   <div className="flex justify-between text-ink-muted">
-                    <span>Tax</span><span className="tnum">{formatAud(detail.tax)}</span>
+                    <span>{t('tax')}</span><span className="tnum">{formatAud(detail.tax)}</span>
                   </div>
                   <div className="flex justify-between border-t border-border pt-1 font-semibold text-ink">
-                    <span>Total</span><span className="tnum">{formatAud(detail.total)}</span>
+                    <span>{t('total')}</span><span className="tnum">{formatAud(detail.total)}</span>
                   </div>
                 </div>
 
                 <div className="flex flex-wrap justify-end gap-3 border-t border-border pt-5">
                   {(detail.currentStatus === 'pending' || detail.currentStatus === 'paid') && (
                     <Button variant="ghost" className="text-danger" onClick={cancelOrder} disabled={advancing}>
-                      {advancing ? 'Cancelling…' : 'Cancel order'}
+                      {advancing ? t('cancelling') : t('cancelOrder')}
                     </Button>
                   )}
                   {NEXT_STATUS[detail.currentStatus] ? (
                     <Button onClick={advanceStatus} disabled={advancing}>
-                      {advancing ? 'Updating…' : `Advance to ${NEXT_STATUS[detail.currentStatus]}`}
+                      {advancing
+                        ? t('updating')
+                        : t('advanceTo', { status: labelStatus(NEXT_STATUS[detail.currentStatus]!) })}
                     </Button>
                   ) : (
-                    <span className="self-center text-sm text-ink-muted">Terminal status — no further moves.</span>
+                    <span className="self-center text-sm text-ink-muted">{t('terminalStatus')}</span>
                   )}
                 </div>
               </>

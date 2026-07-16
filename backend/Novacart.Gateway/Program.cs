@@ -15,6 +15,8 @@ var checkoutWindowSec = rateSection.GetValue("CheckoutWindowSeconds", 60);
 var checkoutQueue = rateSection.GetValue("CheckoutQueueLimit", 10);
 var defaultPermit = rateSection.GetValue("DefaultPermitLimit", 300);
 var defaultWindowSec = rateSection.GetValue("DefaultWindowSeconds", 60);
+var chatPermit = rateSection.GetValue("ChatPermitLimit", 10);
+var chatWindowSec = rateSection.GetValue("ChatWindowSeconds", 60);
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -38,6 +40,17 @@ builder.Services.AddRateLimiter(options =>
                     Window = TimeSpan.FromSeconds(checkoutWindowSec),
                     QueueLimit = checkoutQueue,
                     QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                });
+        }
+
+        if (path.StartsWith("/api/support", StringComparison.OrdinalIgnoreCase))
+        {
+            return RateLimitPartition.GetFixedWindowLimiter(
+                $"chat:{partitionKey}",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = chatPermit,
+                    Window = TimeSpan.FromSeconds(chatWindowSec),
                 });
         }
 
