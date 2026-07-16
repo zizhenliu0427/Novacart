@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Hosting;
 using Novacart.Api.Infrastructure;
+using Novacart.Api.Infrastructure.Threading;
 
 namespace Novacart.Microservice.Hosting;
 
@@ -40,6 +41,7 @@ public static class MicroserviceBootstrap
     private static WebApplication Build(string[] args, Action<WebApplicationBuilder> configure)
     {
         var builder = WebApplication.CreateBuilder(args);
+        builder.ConfigureNovacartThreadPool();
         builder.AddServiceDefaults();
         builder.Services.AddNovacartInfrastructure(builder.Configuration);
         configure(builder);

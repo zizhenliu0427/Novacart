@@ -103,6 +103,21 @@ See [`.env.example`](../.env.example) for the complete list. Critical variables:
 | `Aws__S3__ServiceUrl` | Dev only | Set to `http://localstack:4566` for LocalStack; **unset in production** to use real AWS |
 | `Aws__S3__PublicBaseUrl` | Optional | Stable public URL prefix (e.g. CloudFront origin) |
 
+### Thread pool tuning (PE-8, order-api)
+
+Optional burst tuning for checkout / Stripe webhooks. **Default: disabled.** See [PE8-THREAD-POOL.md](PE8-THREAD-POOL.md).
+
+| Variable | Default | Description |
+|---|---|---|
+| `ThreadPool__Enabled` | `false` | Apply `ThreadPool.SetMinThreads` at startup |
+| `ThreadPool__MinWorkerThreads` | `0` | Worker thread floor (0 = unchanged) |
+| `ThreadPool__MinCompletionPortThreads` | `0` | I/O thread floor |
+| `ThreadPool__OffloadStripeWebhooks` | `false` | Queue webhook continuation after idempotent persist |
+| `ThreadPool__WebhookWorkerCount` | `2` | Parallel webhook consumers |
+| `ThreadPool__WebhookQueueCapacity` | `256` | Bounded queue before webhook POST blocks |
+
+**Suggested staging (after profiling):** `MinWorkerThreads=50`, `MinCompletionPortThreads=50` on order-api only. Profile with `backend/scripts/profile-threadpool.sh order-api`.
+
 ---
 
 ## Local development — S3 / LocalStack

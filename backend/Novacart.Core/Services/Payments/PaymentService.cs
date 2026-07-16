@@ -20,6 +20,7 @@ public interface IPaymentService
 {
     Task<CheckoutResponseDto> ProcessCheckoutAsync(Guid userId, CheckoutRequest request, string gateway);
     Task HandleWebhookAsync(string gateway, string json, string signature);
+    Task ContinuePersistedStripeWebhookAsync(StripeWebhookWorkItem item, CancellationToken cancellationToken = default);
 }
 
 public class PaymentService : IPaymentService
@@ -36,6 +37,7 @@ public class PaymentService : IPaymentService
     private readonly IProductCatalogStore _catalog;
     private readonly IStockHoldGateway _stockHold;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IStripeWebhookWorkQueue _webhookQueue;
     private readonly string _stripeWebhookSecret;
 
     public PaymentService(
@@ -51,7 +53,8 @@ public class PaymentService : IPaymentService
         IProductCatalogStore catalog,
         IStockHoldGateway stockHold,
         IHttpContextAccessor httpContextAccessor,
-        IShardedOrderDb shardedOrderDb)
+        IShardedOrderDb shardedOrderDb,
+        IStripeWebhookWorkQueue webhookQueue)
     {
         _db = db;
         _shardedOrderDb = shardedOrderDb;
@@ -65,6 +68,7 @@ public class PaymentService : IPaymentService
         _catalog = catalog;
         _stockHold = stockHold;
         _httpContextAccessor = httpContextAccessor;
+        _webhookQueue = webhookQueue;
         _stripeWebhookSecret = config["Stripe:WebhookSecret"] ?? string.Empty;
     }
 
@@ -94,7 +98,8 @@ public class PaymentService : IPaymentService
             catalog,
             stockHold,
             httpContextAccessor,
-            new SingleDbShardedOrderDb(db))
+            new SingleDbShardedOrderDb(db),
+            DisabledStripeWebhookWorkQueue.Instance)
     {
     }
 
@@ -251,17 +256,43 @@ public class PaymentService : IPaymentService
             return;
         }
 
-        // 2. Handle relevant event
+        if (_webhookQueue.IsEnabled)
+        {
+            await _webhookQueue.EnqueueAsync(
+                new StripeWebhookWorkItem(stripeEvent.Id, stripeEvent.Type, json));
+            return;
+        }
+
+        await HandlePersistedStripeEventAsync(webhookLog, stripeEvent, json);
+    }
+
+    public async Task ContinuePersistedStripeWebhookAsync(
+        StripeWebhookWorkItem item,
+        CancellationToken cancellationToken = default)
+    {
+        var webhookLog = await _db.PaymentWebhooks
+            .FirstOrDefaultAsync(w => w.EventId == item.EventId, cancellationToken);
+
+        if (webhookLog is null || webhookLog.Processed)
+            return;
+
+        var stripeEvent = EventUtility.ParseEvent(item.Json);
+        await HandlePersistedStripeEventAsync(webhookLog, stripeEvent, item.Json, cancellationToken);
+    }
+
+    private async Task HandlePersistedStripeEventAsync(
+        PaymentWebhook webhookLog,
+        Stripe.Event stripeEvent,
+        string json,
+        CancellationToken cancellationToken = default)
+    {
         if (stripeEvent.Type == Events.CheckoutSessionCompleted)
         {
             var session = stripeEvent.Data.Object as Stripe.Checkout.Session;
             if (session != null && session.Metadata.TryGetValue("OrderId", out var orderIdStr))
             {
                 if (Guid.TryParse(orderIdStr, out var orderId))
-                {
-                    // Update DB states
                     await ExecutePaymentCompletionAsync(orderId, session.Id, json, webhookLog);
-                }
             }
         }
         else if (stripeEvent.Type == Events.CheckoutSessionExpired)
@@ -273,7 +304,7 @@ public class PaymentService : IPaymentService
                 await _stockHold.ReleaseForOrderAsync(orderId);
                 webhookLog.Processed = true;
                 webhookLog.ProcessedAt = DateTime.UtcNow;
-                await _db.SaveChangesAsync();
+                await _db.SaveChangesAsync(cancellationToken);
             }
         }
     }

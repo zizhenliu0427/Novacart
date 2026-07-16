@@ -131,11 +131,12 @@ Typical **Java / Spring Cloud** mall architecture maps roughly as follows (Novac
 | Search | Elasticsearch | ✅ PE-3 |
 | Cart cache | Redis cart | ✅ PE-6 (Postgres source of truth) |
 | Order sharding | ShardingSphere / custom | ✅ PE-7 UserId-hash pilot (off by default) |
+| Thread pool / burst | Custom min threads + async削峰 | ✅ PE-8 min threads + webhook queue (off by default) |
 | Config / secrets | Nacos / Spring Cloud Config | env / K8s secrets |
 | Tracing | Sleuth / Micrometer + Zipkin | ✅ OpenTelemetry + Jaeger + stock metrics |
 | Seata (distributed TX) | 2PC across services | ❌ Saga + outbox instead (not planned) |
 
-**Takeaway:** Novacart now matches typical mid-to-upper-tier Spring mall inventory + checkout practice (PE-1 + PE-4 + Saga). PE-6 (cart reads) and PE-7 (order scale-out) are optional config toggles.
+**Takeaway:** Novacart now matches typical mid-to-upper-tier Spring mall inventory + checkout practice (PE-1 + PE-4 + Saga). PE-6/PE-7/PE-8 are optional config toggles for cart cache, order scale-out, and burst tuning.
 
 ---
 
@@ -212,14 +213,16 @@ Typical **Java / Spring Cloud** mall architecture maps roughly as follows (Novac
 
 ## PE-8 — Thread Pool Tuning
 
+> **Status:** **Complete** (2026-07-16). See [docs/PE8-THREAD-POOL.md](docs/PE8-THREAD-POOL.md). **Disabled by default.**
+
 **Purpose:** Custom thread pool for flash sales and bulk order processing.
 
 **Trigger:** Thread-pool starvation or tail latency under burst checkout / webhook load.
 
-- [ ] Profile checkout + webhook under load (dotnet-counters, Application Insights)
-- [ ] Configure `ThreadPool` min threads or dedicated `TaskScheduler` for hot paths
-- [ ] Optional: isolate webhook processing to dedicated worker process
-- [ ] Document tuned values per environment in deployment guide
+- [x] Profile checkout + webhook under load (dotnet-counters, Application Insights) — `scripts/profile-threadpool.sh` + PE8 doc
+- [x] Configure `ThreadPool` min threads + optional Stripe webhook hot-path queue (`ThreadPoolTuningOptions`)
+- [x] Optional: isolate webhook processing — in-process bounded queue + background workers (separate process documented as scale-out follow-up)
+- [x] Document tuned values per environment in [deployment-guide.md](docs/deployment-guide.md)
 
 ---
 

@@ -919,9 +919,9 @@ else
 
 **结论：** 对涉及外部系统的功能（S3、SMTP、webhook、支付网关），单元测试全绿是必要但不充分的。在宣布"完成"之前，至少做一次完整的端到端往返（presign → PUT → GET）对着真实（或 LocalStack 模拟的）服务。
 
-### 2026-07-16：PE-1 ~ PE-7 — 微服务 → 订单分片
+### 2026-07-16：PE-1 ~ PE-8 — 微服务 → 线程池调优
 
-> **Planned Enhancements** 实施记录（PE-1 ~ PE-7）：技术栈、踩坑与修复。任务清单：[TODO.md](TODO.md)、[HANDOFF.md §11](HANDOFF.md#11-planned-enhancements-scaling-tail--not-scheduled)。设计文档：[MICROSERVICES-PE1.md](docs/MICROSERVICES-PE1.md)、[PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md)、[PE4-PRODUCTION-HARDENING.md](docs/PE4-PRODUCTION-HARDENING.md)、[PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md)、[PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md)。
+> **Planned Enhancements** 实施记录（PE-1 ~ PE-8）：技术栈、踩坑与修复。任务清单：[TODO.md](TODO.md)、[HANDOFF.md §11](HANDOFF.md#11-planned-enhancements-scaling-tail--not-scheduled)。设计文档：[MICROSERVICES-PE1.md](docs/MICROSERVICES-PE1.md)、[PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md)、[PE4-PRODUCTION-HARDENING.md](docs/PE4-PRODUCTION-HARDENING.md)、[PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md)、[PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md)、[PE8-THREAD-POOL.md](docs/PE8-THREAD-POOL.md)。
 
 #### 技术栈一览（PE-1 ~ PE-7）
 
@@ -934,6 +934,7 @@ else
 | **PE-5** | 异步结账 + 运维 | PE-1 Saga + **Admin Saga/DLQ 重试 UI** |
 | **PE-6** | 购物车缓存 | **Redis** 快照 · Postgres 为真相源 · write-through · 默认 `CartRedis.Enabled=false` |
 | **PE-7** | 订单 SQL 分片 | **UserId FNV-1a hash** · `novacart_commerce_0/1` · `order_shard_routes` · 默认 `OrderSharding.Enabled=false` |
+| **PE-8** | 线程池调优 | **`ThreadPool.SetMinThreads`** · 可选 **Stripe webhook 队列** · 默认 `ThreadPool.Enabled=false` |
 
 #### 0. 流程与验证类错误（贯穿 PE-1 ~ PE-7）
 
@@ -1058,7 +1059,23 @@ else
 
 **结论：** [docs/PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md)。默认 `OrderSharding.Enabled=false`。
 
-#### 7. 「测试通过」仍证明不了什么（PE-1 ~ PE-7）
+#### 7. PE-8 — 线程池调优 ✅
+
+**技术栈：** `ThreadPool.SetMinThreads` · 可选 `StripeWebhookWorkQueue` · OTel `Novacart.Runtime` · `profile-threadpool.sh`。
+
+**做了什么：** 启动时配置 worker/IO 最小线程；order-api 可选 webhook 有界队列（持久化后快速 200）；部署文档与 profiling 脚本。
+
+**踩坑：**
+
+| 坑 | 原因 | 解决方案 |
+|---|---|---|
+| **小 VM 上 min threads 过高** | 线程栈占内存 | 先 profile，按 CPU 增量调 |
+| ** offload 跳过幂等落库** | 重复完成支付 | enqueue 前必须写 `payment_webhooks` |
+| **ServiceDefaults 不能引用 Core** | 项目循环依赖 | 在 `MicroserviceBootstrap` / 单体 `Program.cs` 应用调优 |
+
+**结论：** [docs/PE8-THREAD-POOL.md](docs/PE8-THREAD-POOL.md)。默认 `ThreadPool.Enabled=false`。
+
+#### 8. 「测试通过」仍证明不了什么（PE-1 ~ PE-8）
 
 与 S3 那次同一主题：
 

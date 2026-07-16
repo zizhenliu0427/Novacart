@@ -920,9 +920,9 @@ The single biggest lesson from this session: **130/130 unit tests passing did no
 
 **Takeaway:** For features involving external systems (S3, SMTP, webhooks, payment gateways), a green unit-test suite is necessary but not sufficient. Always do at least one end-to-end round-trip (presign → PUT → GET) against a real (or LocalStack-emulated) service before declaring "done."
 
-### 2026-07-16: PE-1 through PE-7 — Microservices → Order Sharding
+### 2026-07-16: PE-1 through PE-8 — Microservices → Thread Pool Tuning
 
-> Record of the **Planned Enhancements** rollout (PE-1 ~ PE-7): tech stacks, mistakes, and fixes. Canonical task lists: [TODO.md](TODO.md), [HANDOFF.md §11](HANDOFF.md#11-planned-enhancements-scaling-tail--not-scheduled). Design docs: [MICROSERVICES-PE1.md](docs/MICROSERVICES-PE1.md), [PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md), [PE4-PRODUCTION-HARDENING.md](docs/PE4-PRODUCTION-HARDENING.md), [PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md), [PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md).
+> Record of the **Planned Enhancements** rollout (PE-1 ~ PE-8): tech stacks, mistakes, and fixes. Canonical task lists: [TODO.md](TODO.md), [HANDOFF.md §11](HANDOFF.md#11-planned-enhancements-scaling-tail--not-scheduled). Design docs: [MICROSERVICES-PE1.md](docs/MICROSERVICES-PE1.md), [PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md), [PE4-PRODUCTION-HARDENING.md](docs/PE4-PRODUCTION-HARDENING.md), [PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md), [PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md), [PE8-THREAD-POOL.md](docs/PE8-THREAD-POOL.md).
 
 #### Tech stack overview (PE-1 ~ PE-7)
 
@@ -935,6 +935,7 @@ The single biggest lesson from this session: **130/130 unit tests passing did no
 | **PE-5** | Async checkout + ops | PE-1 Saga + **`CheckoutSagaAdminService`** · admin saga list · DLQ retry UI |
 | **PE-6** | Cart cache | **Redis** JSON snapshot · Postgres source of truth · write-through · `CartRedis.Enabled=false` default |
 | **PE-7** | Order SQL sharding | **UserId FNV-1a hash** · `novacart_commerce_0/1` · `order_shard_routes` routing table · `IShardedOrderDb` · `OrderSharding.Enabled=false` default |
+| **PE-8** | Thread pool tuning | **`ThreadPool.SetMinThreads`** · optional **Stripe webhook queue** · OTel `Novacart.Runtime` · `ThreadPool.Enabled=false` default |
 
 #### 0. Process & verification mistakes (cross-cutting, PE-1 ~ PE-7)
 
@@ -1068,7 +1069,23 @@ The single biggest lesson from this session: **130/130 unit tests passing did no
 
 **Takeaway:** See [docs/PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md). Enable only when order tables outgrow single Postgres.
 
-#### 7. What "tests pass" still didn't prove (PE-1 ~ PE-7)
+#### 7. PE-8 — Thread pool tuning ✅
+
+**Stack:** `ThreadPool.SetMinThreads` · optional `StripeWebhookWorkQueue` · OTel `Novacart.Runtime` / `Novacart.Webhook` · `dotnet-counters` script.
+
+**What was done:** Configurable worker/IO thread floors at host startup; bounded webhook continuation queue on order-api (return 200 after idempotent persist); profiling script and deployment-guide values.
+
+**Pitfalls:**
+
+| Pitfall | Cause | Solution |
+|---|---|---|
+| **Raising min threads on tiny VMs** | Each thread ≈ 1 MB stack | Profile first; start with +CPU count, not 200 |
+| **Webhook offload without idempotent log** | Double payment completion | Persist `payment_webhooks` before enqueue (unchanged) |
+| **ServiceDefaults ↔ Core cycle** | Thread pool in shared project | Apply tuning in `MicroserviceBootstrap` / monolith `Program.cs`, not ServiceDefaults |
+
+**Takeaway:** See [docs/PE8-THREAD-POOL.md](docs/PE8-THREAD-POOL.md). Default `ThreadPool.Enabled=false`.
+
+#### 8. What "tests pass" still didn't prove (PE-1 ~ PE-8)
 
 Same theme as the S3 session:
 

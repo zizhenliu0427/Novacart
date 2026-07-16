@@ -16,9 +16,11 @@ using Novacart.Api.Services.Catalog;
 using Novacart.Api.Services.Payments;
 using Novacart.Api.Search;
 using Novacart.Api.Infrastructure.Sharding;
+using Novacart.Api.Infrastructure.Threading;
 using Stripe;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.ConfigureNovacartThreadPool();
 
 // Initialize Stripe API Key
 StripeConfiguration.ApiKey = builder.Configuration["Stripe:SecretKey"];
@@ -62,6 +64,7 @@ builder.Services.AddScoped<ICartService, CartService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<IPaymentStrategy, StripePaymentStrategy>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
+builder.Services.AddNovacartStripeWebhookHotPath(builder.Configuration);
 
 // P3-3: Factory pattern (README #13)
 builder.Services.AddScoped<Novacart.Api.Factories.IOrderFactory, Novacart.Api.Factories.OrderFactory>();

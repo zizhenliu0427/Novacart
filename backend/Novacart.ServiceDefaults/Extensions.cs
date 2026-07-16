@@ -61,7 +61,9 @@ public static class Extensions
                 metrics.AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
                     .AddRuntimeInstrumentation()
-                    .AddMeter("Novacart.Stock");
+                    .AddMeter("Novacart.Stock")
+                    .AddMeter("Novacart.Runtime")
+                    .AddMeter("Novacart.Webhook");
             })
             .WithTracing(tracing =>
             {

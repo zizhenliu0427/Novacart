@@ -22,6 +22,7 @@ using Novacart.Api.Services.CartRedis;
 using Novacart.Api.Infrastructure.Messaging;
 using Novacart.Api.Search;
 using Novacart.Api.Storage;
+using Novacart.Api.Infrastructure.Threading;
 using StackExchange.Redis;
 using Stripe;
 
@@ -156,7 +157,7 @@ public static class NovacartServiceExtensions
         return services;
     }
 
-    public static IServiceCollection AddNovacartOrder(this IServiceCollection services)
+    public static IServiceCollection AddNovacartOrder(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<IAdminOrderService, AdminOrderService>();
@@ -171,6 +172,7 @@ public static class NovacartServiceExtensions
         services.AddSingleton<IEmailQueue>(sp => sp.GetRequiredService<EmailQueue>());
         services.AddHostedService<EmailBackgroundWorker>();
         services.AddScoped<IStockHoldGateway, LocalStockHoldGateway>();
+        services.AddNovacartStripeWebhookHotPath(configuration);
         return services;
     }
 
@@ -193,6 +195,7 @@ public static class NovacartServiceExtensions
         services.AddScoped<ICheckoutSagaAdminService, CheckoutSagaAdminService>();
         services.AddScoped<IEmailQueue, MassTransitEmailQueue>();
         services.AddNovacartRabbitMqMonitoring();
+        services.AddNovacartStripeWebhookHotPath(configuration);
         return services;
     }
 
