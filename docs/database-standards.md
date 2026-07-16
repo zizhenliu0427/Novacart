@@ -94,5 +94,7 @@ FK indexes on all navigation properties. These are created by `EnsureCreated()` 
 | Shard databases | Same schema, isolated rows | `novacart_commerce_0`, `novacart_commerce_1` (pilot) |
 | Legacy reads | Fallback when route missing | Pre-sharding orders remain on `DefaultConnection` |
 | Admin list | Cross-shard merge | Fan-out + in-memory sort/paginate (pilot) |
+| Analytics | Cross-shard aggregate | Fan-out shards + legacy (exclude routed IDs) |
+| Backfill | Legacy → shard copy | `OrderShardBackfillService` + `scripts/backfill-order-shards.sh` |
 
 Details: [PE7-SQL-SHARDING.md](PE7-SQL-SHARDING.md).

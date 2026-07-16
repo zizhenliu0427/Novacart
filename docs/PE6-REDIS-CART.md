@@ -49,6 +49,12 @@ Checkout complete (ClearCartConsumer)
 
 Set `CartRedis__Enabled=false` to disable (falls back to Postgres-only reads).
 
+## Integration tests
+
+`CartRedisIntegrationTests` (Testcontainers Redis) verifies write-through snapshot when `CartRedis.Enabled=true`. Skips if Docker is unavailable — same pattern as `StockReservationConcurrencyTests`.
+
+Staging: set `CartRedis__Enabled=true` on `cart-api`, add item via API, confirm `novacart:cart:user:{userId}` key in Redis and `GET /api/cart` read-through.
+
 ## Boundaries
 
 - **PE-6 ≠ PE-4** — cart cache does not lock or reserve inventory.

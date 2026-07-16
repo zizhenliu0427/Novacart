@@ -27,6 +27,9 @@ GET /api/orders (OrderService)
 GET /api/admin/orders (AdminOrderService)
   → fan-out all shards + legacy DB, merge in memory, paginate
 
+GET /api/admin/analytics/* (AnalyticsService)
+  → fan-out all shards; legacy DB excludes orders already in order_shard_routes (no double-count)
+
 Webhook / saga (orderId only)
   → lookup order_shard_routes → CommerceShard{N}
   → fallback DefaultConnection for pre-sharding orders
@@ -60,17 +63,50 @@ Run migrations on all commerce DBs: `backend/scripts/migrate-databases.sh`.
 ## Migration plan (existing data)
 
 1. **Pilot:** new orders only — routed to shards; legacy rows stay on `novacart_commerce`.
-2. **Backfill (manual):** per-user `INSERT … SELECT` into target shard + route row; verify counts.
-3. **Analytics:** `AnalyticsService` still reads DefaultConnection only — fan-out or OLAP replica is follow-up.
+2. **Backfill:** copy legacy orders into target shards by `UserId` hash; register `order_shard_routes`; optional delete from legacy after verify.
+
+### Backfill CLI
+
+Dry-run (default):
+
+```bash
+cd backend
+export ConnectionStrings__DefaultConnection="Host=...;Database=novacart_commerce;..."
+export ConnectionStrings__CommerceShard0="...Database=novacart_commerce_0;..."
+export ConnectionStrings__CommerceShard1="...Database=novacart_commerce_1;..."
+export OrderSharding__Enabled=true
+export OrderSharding__ShardCount=2
+
+./scripts/backfill-order-shards.sh          # dry-run
+./scripts/backfill-order-shards.sh --apply  # write shards + routes
+./scripts/backfill-order-shards.sh --apply --delete-legacy  # also remove legacy rows
+```
+
+Implementation: `OrderShardBackfillService` in `Novacart.Core/Infrastructure/Sharding/`.
+
+### Analytics cross-shard
+
+When `OrderSharding.Enabled=true`, `AnalyticsService` fans out summary / sales-over-time / best-sellers across all shards, then adds legacy DB totals **excluding** orders that already have a route row (prevents double-count after backfill).
+
+## Integration tests
+
+| Test | Scope |
+|------|-------|
+| `OrderShardingIntegrationTests` | In-memory multi-DB harness — cross-shard analytics + backfill dry-run/apply |
+| `OrderShardResolverTests` | FNV-1a shard index stability |
+
+Staging: enable sharding on `order-api` in compose, place test orders on both shards, verify admin analytics totals match expected fan-out sum.
 
 ## Boundaries
 
 - Auth / Product / Cart DBs unchanged.
 - Not PostgreSQL native partitioning — application-level routing (matches PE-1 service style).
 - Admin cross-shard pagination is approximate at very large scale (in-memory merge).
+- Monolith / `order-api` hosts sharded analytics; `product-api` uses product DB only (analytics over orders requires commerce connection in microservice layout — see HANDOFF).
 
 ## Related
 
 - [TODO.md § PE-7](../TODO.md#pe-7--sql-sharding)
 - [docs/database-standards.md](database-standards.md)
 - `Novacart.Core/Infrastructure/Sharding/`
+- `backend/scripts/OrderShardBackfill/` — CLI project

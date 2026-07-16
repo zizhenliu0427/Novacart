@@ -18,6 +18,7 @@
     <Compile Remove="Novacart.AppHost/**/*.cs" />
     <Compile Remove="Novacart.Gateway/**/*.cs" />
     <Compile Remove="Novacart.ServiceDefaults/**/*.cs" />
+    <Compile Remove="scripts/**/*.cs" />
     <Compile Remove="Services/**/*.cs" />
     <Content Remove="Novacart.Core/**" />
     <Content Remove="Novacart.AppHost/**" />

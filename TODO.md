@@ -182,6 +182,10 @@ Typical **Java / Spring Cloud** mall architecture maps roughly as follows (Novac
 - [x] TTL/eviction policy for abandoned guest carts (30d guest / 90d user)
 - [x] Invalidate on checkout completion (`ClearCartConsumer` → `ClearCartAsync`)
 
+**Optional follow-ups (2026-07-16):**
+
+- [x] Integration test with real Redis (Testcontainers) — `CartRedisIntegrationTests` (skips gracefully if Docker unavailable)
+
 ---
 
 ## PE-7 — SQL Sharding
@@ -197,6 +201,12 @@ Typical **Java / Spring Cloud** mall architecture maps roughly as follows (Novac
 - [x] Routing layer in EF or raw SQL (shard resolver in service layer) — `IShardedOrderDb` + `order_shard_routes`
 - [x] Migration plan for existing data; cross-shard admin queries (analytics) strategy — documented in PE7 doc
 - [x] Update [docs/database-standards.md](docs/database-standards.md)
+
+**Optional follow-ups (2026-07-16):**
+
+- [x] `AnalyticsService` cross-shard fan-out + legacy dedupe (exclude routed orders on DefaultConnection)
+- [x] Historical order backfill — `OrderShardBackfillService` + CLI `scripts/backfill-order-shards.sh` (dry-run default; `--apply` / `--delete-legacy`)
+- [x] Integration tests — `OrderShardingIntegrationTests` (in-memory multi-DB harness)
 
 ---
 

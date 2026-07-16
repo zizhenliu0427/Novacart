@@ -7,7 +7,7 @@
 >
 > **Status:** Priority 1 (MVP), Priority 2 (P2), Priority 3 (P3), and P14 are **complete**. **PE-1 through PE-7 and PE-10** are **implemented** (PE-6/PE-7 disabled by default via config). **PE-8+** remain in [TODO.md](TODO.md).
 >
-> Last updated: 2026-07-16 — PE-4 production hardening, PE-5 admin saga/DLQ UI, PE-6 Redis cart cache, PE-7 order SQL sharding pilot (UserId hash, off by default).
+> Last updated: 2026-07-16 — PE-6/PE-7 optional follow-ups (Redis cart + sharding integration tests, analytics fan-out, order backfill CLI).
 
 
 ---
@@ -524,8 +524,8 @@ All items below are **not yet implemented** unless marked ✅ — explicitly out
 | PE-3 | **ElasticSearch** | ✅ Full-text product search (Product API; Postgres fallback). | — |
 | PE-4 | **Distributed Lock & inventory hardening** | **✅ Complete** — Redlock + checkout holds (TTL) + atomic SQL + YARP rate limit + Redis HA docs + OTel metrics. **PE-6 cart ≠ stock lock.** | — |
 | PE-5 | **Async Order Processing** | ✅ **Complete** — MassTransit Saga (PE-1) + admin saga list / DLQ retry UI. | — |
-| PE-6 | **Cart Optimisation** | ✅ **Complete** — Redis cart snapshot (Postgres source of truth); `CartRedis.Enabled=false` by default. See [docs/PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md). | — |
-| PE-7 | **SQL Sharding** | ✅ **Complete (pilot)** — UserId-hash order sharding (`novacart_commerce_0/1`); `OrderSharding.Enabled=false` by default. See [docs/PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md). | — |
+| PE-6 | **Cart Optimisation** | ✅ **Complete** — Redis cart snapshot (Postgres source of truth); `CartRedis.Enabled=false` by default. Testcontainers integration test. See [docs/PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md). | — |
+| PE-7 | **SQL Sharding** | ✅ **Complete (pilot)** — UserId-hash order sharding; analytics fan-out; backfill CLI. `OrderSharding.Enabled=false` by default. See [docs/PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md). | — |
 | PE-8 | **Thread Pool Tuning** | Custom thread pool for flash sales and bulk order processing. | Thread-pool starvation or tail latency under burst checkout load. |
 | PE-9 | **AI Chatbot (Low Priority)** | Customer service bot via **OpenAI API** or **Ollama** (local LLM). | Product/support requirement for automated Q&A on orders, shipping, returns. |
 | PE-10 | **Internationalisation (i18n)** | Bilingual UI (Chinese/English) with URL-based language routing (`/en/`, `/zh/` via next-intl). | ✅ Implemented (admin form copy optional follow-up). |
@@ -545,8 +545,8 @@ Work in vertical slices; each PE item in [TODO.md](TODO.md) expands into concret
 9. **PE-3:** ElasticSearch on Product API ✅ — see [docs/PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md).
 10. **PE-4 baseline + hardening:** Redlock + holds + atomic SQL + YARP rate limit + Redis HA docs + OTel metrics ✅ — [docs/PE4-PRODUCTION-HARDENING.md](docs/PE4-PRODUCTION-HARDENING.md).
 11. **PE-5 admin:** Saga list + DLQ retry UI ✅ — `CheckoutSagaAdminService`, `/admin/system`.
-12. **PE-6:** Redis cart cache ✅ — [docs/PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md); disabled by default.
-13. **PE-7:** Order SQL sharding pilot ✅ — [docs/PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md); disabled by default.
+12. **PE-6:** Redis cart cache ✅ — [docs/PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md); `CartRedisIntegrationTests` (Testcontainers).
+13. **PE-7:** Order SQL sharding pilot ✅ — [docs/PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md); analytics fan-out, `OrderShardBackfillService` + `scripts/backfill-order-shards.sh`, `OrderShardingIntegrationTests`.
 14. **PE-8+** — thread pool tuning, AI chatbot; PE-10 i18n ✅ done (admin form copy optional).
 
 #### Per-phase test gate (do not skip the check; only add tests when warranted)

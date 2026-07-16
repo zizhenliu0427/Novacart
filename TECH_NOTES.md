@@ -1046,7 +1046,7 @@ The single biggest lesson from this session: **130/130 unit tests passing did no
 | **`Cart` namespace vs entity `Cart`** | `using Novacart.Api.Models.Dtos.Cart` conflicts with entity | Alias: `using CartEntity = Novacart.Api.Models.Entities.Cart` — **never** replace_all `Cart` in `CartService.cs` |
 | **Caching prices in Redis** | Stale pricing if cached with line items | Only cache line items (productId + qty); resolve prices from catalog on read |
 
-**Takeaway:** See [docs/PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md). Default `CartRedis.Enabled=false`.
+**Takeaway:** See [docs/PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md). Default `CartRedis.Enabled=false`. **Follow-up ✅:** `CartRedisIntegrationTests` (Testcontainers Redis).
 
 #### 6. PE-7 — Order SQL sharding pilot ✅
 
@@ -1061,7 +1061,10 @@ The single biggest lesson from this session: **130/130 unit tests passing did no
 | **`Guid.GetHashCode()` for sharding** | Not stable / can be negative | FNV-1a over Guid bytes + **unsigned** mod |
 | **`replace_all Cart` in CartService** | Broke DTOs and method names | Only alias entity type; keep `ICartService` / `CartDto` names |
 | **Admin pagination across shards** | No global ORDER BY in SQL | Fan-out + in-memory merge (pilot OK; OLAP later) |
-| **Analytics still single-DB** | `AnalyticsService` not sharded | Document fan-out or read replica as follow-up |
+| **Analytics double-count after backfill** | Legacy + shard both hold same order | Legacy query excludes IDs in `order_shard_routes` |
+| **Backfill safety** | Accidental prod writes | CLI defaults to dry-run; `--apply` / `--delete-legacy` explicit |
+
+**Optional follow-ups (2026-07-16) ✅:** `AnalyticsService` cross-shard aggregation · `OrderShardBackfillService` + `scripts/backfill-order-shards.sh` · `OrderShardingIntegrationTests`.
 
 **Takeaway:** See [docs/PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md). Enable only when order tables outgrow single Postgres.
 
@@ -1072,7 +1075,7 @@ Same theme as the S3 session:
 - **Unit tests green** did not catch Cart/Order startup DI failures — only **full compose up** did.
 - **InMemory EF tests** did not validate Postgres `ILIKE` fallback or real ES queries.
 - **Mock locks** did not prove concurrency — **Testcontainers Redis** did.
-- **PE-6/PE-7 disabled in tests** — `DisabledCartRedisStore` / `SingleDbShardedOrderDb` mean sharding and cart cache paths need explicit integration tests when enabled in staging.
+- **PE-6/PE-7 enabled paths** — covered by `CartRedisIntegrationTests` / `OrderShardingIntegrationTests` (Testcontainers / in-memory multi-DB); still run compose with flags enabled for staging acceptance.
 - **HANDOFF smoke** (`GET /api/products?q=…` → `searchEngine: "elasticsearch"`) is the acceptance bar for PE-3.
 
 **Rule of thumb:** After any PE touching **multiple containers**, **external infra** (ES, Redis, RabbitMQ), **shared DI**, or **multi-DB routing**, run `docker compose up --build -d`, check `db-migrate` exit 0, then hit the gateway — not just `dotnet test` on the host (use `Dockerfile.backend.test` when host lacks .NET 8).

@@ -1036,7 +1036,7 @@ else
 | **`Cart` 命名空间与实体冲突** | DTO 命名空间 vs 实体类 | 别名 `CartEntity = …Entities.Cart`；**禁止**对 `CartService.cs` 做 replace_all |
 | **在 Redis 里缓存价格** | 价格规则会变 | 只缓存 line items；DTO 构建时查 catalog |
 
-**结论：** [docs/PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md)。默认 `CartRedis.Enabled=false`。
+**结论：** [docs/PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md)。默认 `CartRedis.Enabled=false`。**后续 ✅：** `CartRedisIntegrationTests`（Testcontainers Redis）。
 
 #### 6. PE-7 — 订单 SQL 分片试点 ✅
 
@@ -1051,7 +1051,10 @@ else
 | **`Guid.GetHashCode()` 做分片** | 不稳定 / 可能为负 | FNV-1a + 无符号取模 |
 | **CartService replace_all** | 破坏 DTO/接口名 | 仅实体用别名 |
 | **Admin 跨分片分页** | 无法单库 ORDER BY | fan-out + 内存合并（试点够用） |
-| **Analytics 仍单库** | 未改 `AnalyticsService` | 文档标注后续 fan-out/OLAP |
+| **Backfill 后 Analytics 双计** | legacy 与 shard 重复 | legacy 查询排除 `order_shard_routes` 已有订单 |
+| **Backfill 误写** | 直接改 prod | CLI 默认 dry-run；`--apply` / `--delete-legacy` 显式 |
+
+**可选后续（2026-07-16）✅：** `AnalyticsService` 跨分片聚合 · `OrderShardBackfillService` + `scripts/backfill-order-shards.sh` · `OrderShardingIntegrationTests`。
 
 **结论：** [docs/PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md)。默认 `OrderSharding.Enabled=false`。
 
@@ -1062,7 +1065,7 @@ else
 - **单元测试全绿**没抓到 Cart/Order 启动 DI 失败 — 只有 **完整 compose up** 才暴露。
 - **InMemory EF** 没验证 Postgres `ILIKE` 回退或真实 ES 查询。
 - **Mock 锁**没证明并发 — **Testcontainers Redis** 才证明。
-- **PE-6/PE-7 测试默认关闭** — `DisabledCartRedisStore` / `SingleDbShardedOrderDb`；启用分片/购物车缓存需在 staging 做集成验证。
+- **PE-6/PE-7 启用路径** — `CartRedisIntegrationTests` / `OrderShardingIntegrationTests` 已覆盖；staging 仍建议 compose 开 flag 做验收。
 - **HANDOFF 冒烟**（`GET /api/products?q=…` → `searchEngine: "elasticsearch"`）是 PE-3 验收标准。
 
 **经验法则：** 涉及**多容器**、**外部基础设施**（ES、Redis、RabbitMQ）、**共享 DI** 或 **多库路由** 的 PE，完成后跑 `docker compose up --build -d`、确认 `db-migrate` exit 0，再经网关打接口 — 宿主机无 .NET 8 时用 `Dockerfile.backend.test`。
