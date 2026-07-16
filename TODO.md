@@ -89,7 +89,7 @@
 
 ## PE-4 — Distributed Lock & inventory hardening (Redis)
 
-> **Status:** **Complete** (baseline + production hardening, 2026-07-16). **PE-6 (Redis cart)** remains separate.
+> **Status:** **Complete** (baseline + production hardening, 2026-07-16).
 
 **Purpose:** Prevent oversell and protect hot inventory paths when Product (and checkout) run at multiple replicas.
 
@@ -116,25 +116,26 @@
 
 Typical **Java / Spring Cloud** mall architecture maps roughly as follows (Novacart .NET equivalents in parentheses):
 
-| Capability | Spring Cloud / ecosystem (typical) | Novacart today | Target (PE-4+) |
-|---|---|---|---|
-| Service split | Spring Boot microservices | ✅ Auth / Product / Cart / Order | — |
-| API gateway | Spring Cloud Gateway | ✅ YARP | Rate limit (PE-4) |
-| Discovery | Nacos / Eureka | ✅ Aspire / K8s Services | — |
-| Sync resilience | OpenFeign + Sentinel / Resilience4j | ✅ Polly + Refit | Rate limit (PE-4) |
-| Async checkout | Spring Cloud Stream + RabbitMQ | ✅ MassTransit + Saga | — |
-| Outbox / reliability | Transactional outbox pattern | ✅ MassTransit EF Outbox | — |
-| **Inventory lock** | Redisson / Redis lock | ✅ `RedisDistributedLockService` | HA Redis (PE-4) |
-| **Inventory reservation** | Custom + Redis / DB hold table | ❌ Deduct on payment webhook only | Reservation + TTL (PE-4) |
-| **Atomic stock SQL** | MyBatis `UPDATE … WHERE stock >=` | ⚠️ EF read-check-write under lock | Conditional UPDATE (PE-4) |
-| Flash sale | Sentinel limit + MQ削峰 + 库存预热 | ❌ | Gateway queue (PE-4) |
-| Search | Elasticsearch | ✅ PE-3 | — |
-| Cart cache | Redis cart | Postgres cart | PE-6 (separate) |
-| Config / secrets | Nacos / Spring Cloud Config | env / K8s secrets | — |
-| Tracing | Sleuth / Micrometer + Zipkin | ✅ OpenTelemetry + Jaeger | PE-4 stock metrics |
-| Seata (distributed TX) | 2PC across services | ❌ Saga + outbox instead | Not planned (Saga preferred) |
+| Capability | Spring Cloud / ecosystem (typical) | Novacart today |
+|---|---|---|
+| Service split | Spring Boot microservices | ✅ Auth / Product / Cart / Order |
+| API gateway | Spring Cloud Gateway | ✅ YARP + checkout rate limit |
+| Discovery | Nacos / Eureka | ✅ Aspire / K8s Services |
+| Sync resilience | OpenFeign + Sentinel / Resilience4j | ✅ Polly + Refit + rate limit |
+| Async checkout | Spring Cloud Stream + RabbitMQ | ✅ MassTransit + Saga |
+| Outbox / reliability | Transactional outbox pattern | ✅ MassTransit EF Outbox |
+| **Inventory lock** | Redisson / Redis lock | ✅ `RedisDistributedLockService` + HA config |
+| **Inventory reservation** | Custom + Redis / DB hold table | ✅ `StockHoldService` + TTL worker |
+| **Atomic stock SQL** | MyBatis `UPDATE … WHERE stock >=` | ✅ `ProductStockRepository` conditional UPDATE |
+| Flash sale | Sentinel limit + MQ削峰 + 库存预热 | ✅ YARP rate limit + Saga + holds |
+| Search | Elasticsearch | ✅ PE-3 |
+| Cart cache | Redis cart | ✅ PE-6 (Postgres source of truth) |
+| Order sharding | ShardingSphere / custom | ✅ PE-7 UserId-hash pilot (off by default) |
+| Config / secrets | Nacos / Spring Cloud Config | env / K8s secrets |
+| Tracing | Sleuth / Micrometer + Zipkin | ✅ OpenTelemetry + Jaeger + stock metrics |
+| Seata (distributed TX) | 2PC across services | ❌ Saga + outbox instead (not planned) |
 
-**Takeaway:** Spring malls rarely rely on **only** a Redis lock — they combine **reservation**, **DB conditional update**, **MQ + Saga**, **gateway限流**, and **Redis HA**. Novacart baseline (PE-1 + PE-4 lock + Saga) matches mid-tier; PE-4 hardening closes the gap to common production practice.
+**Takeaway:** Novacart now matches typical mid-to-upper-tier Spring mall inventory + checkout practice (PE-1 + PE-4 + Saga). PE-6 (cart reads) and PE-7 (order scale-out) are optional config toggles.
 
 ---
 

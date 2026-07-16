@@ -920,21 +920,23 @@ The single biggest lesson from this session: **130/130 unit tests passing did no
 
 **Takeaway:** For features involving external systems (S3, SMTP, webhooks, payment gateways), a green unit-test suite is necessary but not sufficient. Always do at least one end-to-end round-trip (presign → PUT → GET) against a real (or LocalStack-emulated) service before declaring "done."
 
-### 2026-07-16: PE-1 through PE-4 — Microservices, ElasticSearch, Distributed Lock
+### 2026-07-16: PE-1 through PE-7 — Microservices → Order Sharding
 
-> Record of the **Planned Enhancements** rollout: tech stacks used, mistakes made during implementation, and fixes. Canonical task lists: [TODO.md](TODO.md), [HANDOFF.md §11](HANDOFF.md#11-planned-enhancements-scaling-tail--not-scheduled). Design docs: [docs/MICROSERVICES-PE1.md](docs/MICROSERVICES-PE1.md), [docs/PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md).
+> Record of the **Planned Enhancements** rollout (PE-1 ~ PE-7): tech stacks, mistakes, and fixes. Canonical task lists: [TODO.md](TODO.md), [HANDOFF.md §11](HANDOFF.md#11-planned-enhancements-scaling-tail--not-scheduled). Design docs: [MICROSERVICES-PE1.md](docs/MICROSERVICES-PE1.md), [PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md), [PE4-PRODUCTION-HARDENING.md](docs/PE4-PRODUCTION-HARDENING.md), [PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md), [PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md).
 
-#### Tech stack overview (PE-1 ~ PE-4)
+#### Tech stack overview (PE-1 ~ PE-7)
 
 | PE | Scope | Stack |
 |---|---|---|
-| **PE-1** | Microservices (default `docker compose up`) | **.NET Aspire** AppHost · **YARP** gateway · **Polly** + **Refit** · **MassTransit** + **RabbitMQ** · **Transactional Outbox** · **MassTransit Saga** · 4 logical DBs (auth / product / cart / order) · **OpenTelemetry** + **Jaeger** · K8s skeleton |
-| **PE-2** | Async messaging | Folded into PE-1 — MassTransit transport replaces in-process `EmailQueue` at scale |
-| **PE-5** | Async checkout | Folded into PE-1 — `OrderCheckoutStateMachine` (payment → stock → email → clear cart) |
-| **PE-3** | Full-text search | **Elasticsearch 8.15** · `Elastic.Clients.Elasticsearch` · Product API only; Postgres `ILIKE` fallback |
-| **PE-4 baseline** | Inventory lock | **Redis 7** · Redlock-style `RedisDistributedLockService` · `StockReservationService` on `ReserveStockConsumer` · Testcontainers concurrency test |
+| **PE-1** | Microservices (default `docker compose up`) | **.NET Aspire** AppHost · **YARP** gateway · **Polly** + **Refit** · **MassTransit** + **RabbitMQ** · **Transactional Outbox** · **MassTransit Saga** · 4 logical DBs · **OpenTelemetry** + **Jaeger** · K8s skeleton |
+| **PE-2** | Async messaging | Folded into PE-1 — MassTransit transport |
+| **PE-3** | Full-text search | **Elasticsearch 8.15** · Product API; Postgres `ILIKE` fallback |
+| **PE-4** | Inventory hardening | **Redis 7** Redlock · **stock holds** (TTL) · **atomic SQL** decrement · **YARP rate limit** · Redis HA docs · **OTel** `Novacart.Stock` metrics |
+| **PE-5** | Async checkout + ops | PE-1 Saga + **`CheckoutSagaAdminService`** · admin saga list · DLQ retry UI |
+| **PE-6** | Cart cache | **Redis** JSON snapshot · Postgres source of truth · write-through · `CartRedis.Enabled=false` default |
+| **PE-7** | Order SQL sharding | **UserId FNV-1a hash** · `novacart_commerce_0/1` · `order_shard_routes` routing table · `IShardedOrderDb` · `OrderSharding.Enabled=false` default |
 
-#### 0. Process & verification mistakes (cross-cutting)
+#### 0. Process & verification mistakes (cross-cutting, PE-1 ~ PE-7)
 
 | Mistake | Tech / context | Fix / lesson |
 |---|---|---|
@@ -988,74 +990,92 @@ The single biggest lesson from this session: **130/130 unit tests passing did no
 - **Read the new client docs** — `Elastic.Clients.Elasticsearch` is not a drop-in for NEST.
 - See [docs/PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md) for config and sync table.
 
-#### 3. PE-4 — Distributed lock & inventory (baseline + production gap)
+#### 3. PE-4 — Distributed lock & inventory hardening ✅
 
-**Stack:** Redis 7 · `RedisDistributedLockService` (Redlock-style, single master in dev) · `StockReservationService` in Product `ReserveStockConsumer` · `StockReservationConcurrencyTests` (50 concurrent tasks, 5 stock, Testcontainers Redis).
+**Stack:** Redis 7 · `RedisDistributedLockService` · `StockHoldService` + `stock_holds` table · `ProductStockRepository.TryDecrementStockAsync` · YARP rate limiting · [PE4-REDIS-HA.md](docs/PE4-REDIS-HA.md) · `StockInventoryMetrics` (OTel).
 
-**What was done (baseline):** Lock around stock deduction in the saga consumer; concurrency integration test proves no oversell under parallel `TryReserveAsync`.
+**What was done:** Baseline Redlock on `ReserveStockConsumer` **plus** production hardening — checkout holds at PaymentIntent creation, TTL expiry worker, conditional SQL decrement, gateway rate limit on `/api/checkout`, Redis HA connection-string docs, stock/lock OTel metrics.
 
 **Pitfalls / misconceptions:**
 
-| Pitfall | Cause | Solution / target |
+| Pitfall | Cause | Solution |
 |---|---|---|
-| **Fake lock in unit tests always succeeds** | Test double doesn't simulate contention | Real concurrency coverage requires **Testcontainers Redis** (or similar), not mocks |
-| **"Redis lock = production-ready inventory"** | Lock alone doesn't cover reservation, flash-sale, or DB races | PE-4 **hardening** still open: PaymentIntent TTL reservation, `UPDATE … WHERE stock >= qty`, YARP rate limit, Redis Sentinel/Cluster, stock/lock metrics |
-| **Confused PE-6 with PE-4** | Redis cart cache vs stock lock | **PE-6** optimises cart reads; **PE-4** protects inventory writes — separate concerns |
+| **Fake lock in unit tests always succeeds** | Test double doesn't simulate contention | Testcontainers Redis for concurrency tests |
+| **"Redis lock = production-ready inventory"** | Lock alone doesn't cover reservation or DB races | PE-4 hardening adds holds + atomic SQL + rate limit (now ✅) |
+| **Confused PE-6 with PE-4** | Redis cart cache vs stock lock | **PE-6** = cart reads; **PE-4** = inventory writes — separate |
+| **Cart Redis vs stock Redis** | Same Redis instance, different keys/purpose | PE-6 uses `novacart:cart:*`; PE-4 uses `novacart:stock:*` — do not merge logic |
 
-**Spring Cloud large mall — full stack reference**
-
-Large Spring Cloud e-commerce sites rarely add **only** a Redis lock. They stack multiple layers:
+**Spring Cloud large mall — inventory stack (current state)**
 
 | Capability | Typical Spring ecosystem | Novacart today |
 |---|---|---|
-| **Microservice split** | Spring Boot multi-service | ✅ PE-1 |
-| **API gateway** | Spring Cloud Gateway | ✅ YARP |
-| **Service discovery** | Nacos / Eureka | ✅ Aspire / K8s |
-| **Sync call resilience** | OpenFeign + Sentinel | ✅ Refit + Polly |
-| **Async checkout** | Spring Cloud Stream + Saga | ✅ MassTransit Saga |
-| **Reliable messaging** | Outbox pattern | ✅ MassTransit Outbox |
-| **Stock deduction lock** | Redisson | ✅ Redlock baseline |
-| **Stock reservation (hold)** | Redis / DB hold + TTL | ❌ → PE-4 hardening |
-| **DB conditional update** | MyBatis optimistic / `UPDATE … WHERE stock >=` | ❌ → PE-4 hardening |
-| **Flash-sale rate limit** | Sentinel + MQ peak shaving | ❌ → PE-4 hardening |
-| **Search** | Elasticsearch | ✅ PE-3 |
-| **Shopping cart** | Redis | Postgres today → **PE-6** |
-| **Distributed tracing** | Sleuth / Zipkin | ✅ OpenTelemetry + Jaeger |
-| **Distributed transactions (Seata)** | 2PC | ❌ intentionally — **Saga is the common choice** (no 2PC across services) |
+| Stock deduct lock | Redisson | ✅ Redlock + HA config docs |
+| Stock reservation (hold) | Redis / DB hold + TTL | ✅ `StockHoldService` |
+| DB conditional update | `UPDATE … WHERE stock >=` | ✅ `ProductStockRepository` |
+| Flash-sale rate limit | Sentinel + MQ | ✅ YARP fixed-window limiter |
+| Shopping cart | Redis | ✅ PE-6 (Postgres truth + Redis snapshot) |
+| Order sharding | ShardingSphere / custom | ✅ PE-7 UserId-hash pilot |
 
-**Production layers to add (priority order):**
-
-1. **Stock reservation** — hold inventory when order / PaymentIntent is created; release on timeout (TTL).
-2. **Atomic DB decrement** — single statement, no race between read and write:
-   ```sql
-   UPDATE products SET stock = stock - @q
-   WHERE id = @id AND stock >= @q;
-   ```
-3. **Rate limiting / queuing** — gateway or dedicated flash-sale queue to protect Redis and DB under burst traffic.
-4. **Redis high availability** — Sentinel or Cluster; true Redlock needs multi-master quorum.
-5. **PE-6 Redis cart** — **different problem** (fast reads, cross-device sync); does **not** replace stock lock or reservation.
-6. **Observability** — lock wait time, `LockNotAcquired` count, stock mismatch alerts.
-
-**Novacart-specific answers:**
+**Novacart-specific answers (post PE-4 ~ PE-7):**
 
 | Question | Answer |
 |---|---|
-| Is **only** a Redis lock enough? | **No** — it is one layer in the inventory concurrency story, not the whole story. |
-| Enough for **current Novacart stage**? | **Yes** — microservices + Saga + idempotency + Redis lock already cover *deduct stock after payment succeeds without overselling across replicas*. |
-| Ready for **real flash sale / mega promo**? | **Not yet** — still need reservation, conditional DB update, rate limiting, and HA Redis. PE-6 optimises the cart, not inventory locking. |
+| Is **only** a Redis lock enough? | **No** — but PE-4 now adds holds, atomic SQL, and rate limiting. |
+| Ready for **real flash sale / mega promo**? | **Much closer** — enable PE-4 stack + monitor OTel stock metrics; tune YARP limits per environment. |
+| Does PE-6 replace PE-4? | **No** — cart cache does not reserve or deduct inventory. |
+| Does PE-7 replace PE-4/PE-6? | **No** — sharding scales order **storage**; inventory and cart remain separate concerns. |
 
-**Takeaway:** Novacart baseline (PE-1 + PE-3 + PE-4 lock + Saga) matches a solid mid-tier stack. Closing the gap to typical Spring mall production practice is tracked in [TODO.md § PE-4](TODO.md#pe-4--distributed-lock--inventory-hardening-redis) (reservation, atomic SQL, rate limit, Redis HA, metrics) and [PE-6](TODO.md) (cart cache).
+**Takeaway:** See [docs/PE4-PRODUCTION-HARDENING.md](docs/PE4-PRODUCTION-HARDENING.md).
 
-#### 4. What "tests pass" still didn't prove (PE-1 ~ PE-4)
+#### 4. PE-5 — Admin saga visibility ✅
+
+**What was done:** `CheckoutSagaAdminService` — list checkout sagas, retry failed steps; `RabbitMqMonitoringService.RetryErrorQueueAsync` for DLQ; Admin UI at `/admin/system`.
+
+**Lesson:** PE-5 core flow ships with PE-1 Saga; the **admin retry UI** is the separate PE-5 deliverable for ops visibility.
+
+#### 5. PE-6 — Redis cart cache ✅
+
+**Stack:** `CartRedisStore` · `CartRedisSnapshot` · `ICartRedisStore` · `CartRedisOptions` (`Enabled`, guest/user TTL).
+
+**What was done:** Read-through / write-through Redis snapshot per user/session; Postgres remains source of truth; prices/stock loaded from catalog on every DTO build; invalidate on clear/merge/checkout.
+
+**Pitfalls:**
+
+| Pitfall | Cause | Solution |
+|---|---|---|
+| **`Cart` namespace vs entity `Cart`** | `using Novacart.Api.Models.Dtos.Cart` conflicts with entity | Alias: `using CartEntity = Novacart.Api.Models.Entities.Cart` — **never** replace_all `Cart` in `CartService.cs` |
+| **Caching prices in Redis** | Stale pricing if cached with line items | Only cache line items (productId + qty); resolve prices from catalog on read |
+
+**Takeaway:** See [docs/PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md). Default `CartRedis.Enabled=false`.
+
+#### 6. PE-7 — Order SQL sharding pilot ✅
+
+**Stack:** `OrderShardResolver` (FNV-1a mod shard count) · `order_shard_routes` · `IShardedOrderDb` · `novacart_commerce_0/1` · `OrderSharding.Enabled=false` default.
+
+**What was done:** UserId-hash routing for orders/items/payments/status history; route table on legacy `novacart_commerce`; admin fan-out + legacy fallback for pre-sharding rows; webhook/saga lookup by `orderId` via route index.
+
+**Pitfalls:**
+
+| Pitfall | Cause | Solution |
+|---|---|---|
+| **`Guid.GetHashCode()` for sharding** | Not stable / can be negative | FNV-1a over Guid bytes + **unsigned** mod |
+| **`replace_all Cart` in CartService** | Broke DTOs and method names | Only alias entity type; keep `ICartService` / `CartDto` names |
+| **Admin pagination across shards** | No global ORDER BY in SQL | Fan-out + in-memory merge (pilot OK; OLAP later) |
+| **Analytics still single-DB** | `AnalyticsService` not sharded | Document fan-out or read replica as follow-up |
+
+**Takeaway:** See [docs/PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md). Enable only when order tables outgrow single Postgres.
+
+#### 7. What "tests pass" still didn't prove (PE-1 ~ PE-7)
 
 Same theme as the S3 session:
 
 - **Unit tests green** did not catch Cart/Order startup DI failures — only **full compose up** did.
 - **InMemory EF tests** did not validate Postgres `ILIKE` fallback or real ES queries.
 - **Mock locks** did not prove concurrency — **Testcontainers Redis** did.
+- **PE-6/PE-7 disabled in tests** — `DisabledCartRedisStore` / `SingleDbShardedOrderDb` mean sharding and cart cache paths need explicit integration tests when enabled in staging.
 - **HANDOFF smoke** (`GET /api/products?q=…` → `searchEngine: "elasticsearch"`) is the acceptance bar for PE-3.
 
-**Rule of thumb:** After any PE touching **multiple containers**, **external infra** (ES, Redis, RabbitMQ), or **shared DI**, run `docker compose up --build -d`, check `db-migrate` exit 0, then hit the gateway — not just `dotnet test` on the host.
+**Rule of thumb:** After any PE touching **multiple containers**, **external infra** (ES, Redis, RabbitMQ), **shared DI**, or **multi-DB routing**, run `docker compose up --build -d`, check `db-migrate` exit 0, then hit the gateway — not just `dotnet test` on the host (use `Dockerfile.backend.test` when host lacks .NET 8).
 
 ---
 > **⚠️ IMPORTANT: Always read the official documentation before using any technology.**

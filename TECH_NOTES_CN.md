@@ -919,21 +919,23 @@ else
 
 **结论：** 对涉及外部系统的功能（S3、SMTP、webhook、支付网关），单元测试全绿是必要但不充分的。在宣布"完成"之前，至少做一次完整的端到端往返（presign → PUT → GET）对着真实（或 LocalStack 模拟的）服务。
 
-### 2026-07-16：PE-1 ~ PE-4 — 微服务、ElasticSearch、分布式锁
+### 2026-07-16：PE-1 ~ PE-7 — 微服务 → 订单分片
 
-> **Planned Enhancements** 实施过程中的技术栈、踩坑与修复记录。任务清单：[TODO.md](TODO.md)、[HANDOFF.md §11](HANDOFF.md#11-planned-enhancements-scaling-tail--not-scheduled)。设计文档：[docs/MICROSERVICES-PE1.md](docs/MICROSERVICES-PE1.md)、[docs/PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md)。
+> **Planned Enhancements** 实施记录（PE-1 ~ PE-7）：技术栈、踩坑与修复。任务清单：[TODO.md](TODO.md)、[HANDOFF.md §11](HANDOFF.md#11-planned-enhancements-scaling-tail--not-scheduled)。设计文档：[MICROSERVICES-PE1.md](docs/MICROSERVICES-PE1.md)、[PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md)、[PE4-PRODUCTION-HARDENING.md](docs/PE4-PRODUCTION-HARDENING.md)、[PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md)、[PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md)。
 
-#### 技术栈一览（PE-1 ~ PE-4）
+#### 技术栈一览（PE-1 ~ PE-7）
 
 | PE | 范围 | 技术栈 |
 |---|---|---|
-| **PE-1** | 微服务（默认 `docker compose up`） | **.NET Aspire** AppHost · **YARP** 网关 · **Polly** + **Refit** · **MassTransit** + **RabbitMQ** · **Transactional Outbox** · **MassTransit Saga** · 4 个逻辑库（auth / product / cart / order） · **OpenTelemetry** + **Jaeger** · K8s 骨架 |
-| **PE-2** | 异步消息 | 并入 PE-1 — MassTransit 替代进程内 `EmailQueue` |
-| **PE-5** | 异步结账 | 并入 PE-1 — `OrderCheckoutStateMachine`（支付 → 扣库存 → 邮件 → 清购物车） |
-| **PE-3** | 全文搜索 | **Elasticsearch 8.15** · `Elastic.Clients.Elasticsearch` · 仅 Product API；Postgres `ILIKE` 回退 |
-| **PE-4 基线** | 库存锁 | **Redis 7** · Redlock 风格 `RedisDistributedLockService` · `StockReservationService` + `ReserveStockConsumer` · Testcontainers 并发测试 |
+| **PE-1** | 微服务（默认 `docker compose up`） | **Aspire** · **YARP** · **Polly** + **Refit** · **MassTransit** + **RabbitMQ** · **Outbox** · **Saga** · 4 逻辑库 · **OpenTelemetry** + **Jaeger** |
+| **PE-2** | 异步消息 | 并入 PE-1 |
+| **PE-3** | 全文搜索 | **Elasticsearch 8.15** · Product API；Postgres 回退 |
+| **PE-4** | 库存加固 | **Redis** Redlock · **预占库存**（TTL）· **原子 SQL** 扣减 · **YARP 限流** · Redis HA 文档 · **OTel** 库存指标 |
+| **PE-5** | 异步结账 + 运维 | PE-1 Saga + **Admin Saga/DLQ 重试 UI** |
+| **PE-6** | 购物车缓存 | **Redis** 快照 · Postgres 为真相源 · write-through · 默认 `CartRedis.Enabled=false` |
+| **PE-7** | 订单 SQL 分片 | **UserId FNV-1a hash** · `novacart_commerce_0/1` · `order_shard_routes` · 默认 `OrderSharding.Enabled=false` |
 
-#### 0. 流程与验证类错误（贯穿 PE-1 ~ PE-4）
+#### 0. 流程与验证类错误（贯穿 PE-1 ~ PE-7）
 
 | 错误 | 技术 / 场景 | 修复 / 教训 |
 |---|---|---|
@@ -987,74 +989,83 @@ else
 - **新客户端要读官方文档** — `Elastic.Clients.Elasticsearch` 不是 NEST 的直接替换。
 - 配置与同步表见 [docs/PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md)。
 
-#### 3. PE-4 — 分布式锁与库存（基线 + 生产差距）
+#### 3. PE-4 — 分布式锁与库存加固 ✅
 
-**技术栈：** Redis 7 · `RedisDistributedLockService`（Redlock 风格，开发环境单 master） · Product 侧 `StockReservationService` · `StockReservationConcurrencyTests`（50 并发、5 库存、Testcontainers Redis）。
+**技术栈：** Redis 7 · `RedisDistributedLockService` · `StockHoldService` + `stock_holds` · `ProductStockRepository` 条件 UPDATE · YARP 限流 · [PE4-REDIS-HA.md](docs/PE4-REDIS-HA.md) · OTel `Novacart.Stock`。
 
-**基线已完成：** Saga 消费者在扣库存外加锁；并发集成测试证明并行 `TryReserveAsync` 不会超卖。
+**已完成：** Redlock 基线 + 生产加固 — checkout 预占、TTL 释放、原子 SQL 扣减、网关限流、Redis HA 配置文档、库存/锁指标。
 
 **踩坑 / 误解：**
 
-| 坑 | 原因 | 解决方案 / 目标 |
+| 坑 | 原因 | 解决方案 |
 |---|---|---|
-| **单元测试里的假锁永远成功** | Mock 无法模拟竞争 | 真实并发覆盖需要 **Testcontainers Redis**，不能靠 Mock |
-| **「有 Redis 锁 = 生产级库存」** | 锁 alone 不覆盖预占、秒杀、DB 竞态 | PE-4 **加固**仍待做：PaymentIntent TTL 预占、`UPDATE … WHERE stock >= qty`、YARP 限流、Redis Sentinel/Cluster、库存/锁指标 |
-| **把 PE-6 和 PE-4 混为一谈** | Redis 购物车缓存 vs 库存锁 | **PE-6** 优化购物车读；**PE-4** 保护库存写 — 不同边界 |
+| **单元测试假锁永远成功** | Mock 无法模拟竞争 | Testcontainers Redis |
+| **「有 Redis 锁 = 生产级库存」** | 锁 alone 不够 | PE-4 加固已补预占 + 原子 SQL + 限流（✅） |
+| **PE-6 与 PE-4 混为一谈** | 购物车缓存 vs 库存锁 | PE-6 读优化；PE-4 写保护 — 不同边界 |
+| **购物车 Redis 与库存 Redis** | 同一 Redis 实例 | key 前缀分离：`novacart:cart:*` vs `novacart:stock:*` |
 
-**Spring Cloud 大型购物网站 — 完整对照**
+**Spring Cloud 大型商城 — 当前对照**
 
-大型 Spring Cloud 购物网站通常**不是只加一个 Redis 锁**，而是叠这些层：
-
-| 能力 | Spring 生态常见 | Novacart 现状 |
+| 能力 | Spring 常见 | Novacart 现状 |
 |---|---|---|
-| **微服务拆分** | Spring Boot 多服务 | ✅ PE-1 |
-| **网关** | Spring Cloud Gateway | ✅ YARP |
-| **注册发现** | Nacos / Eureka | ✅ Aspire / K8s |
-| **同步调用容错** | OpenFeign + Sentinel | ✅ Refit + Polly |
-| **异步结账** | Spring Cloud Stream + Saga | ✅ MassTransit Saga |
-| **可靠消息** | Outbox | ✅ MassTransit Outbox |
-| **扣库存锁** | Redisson | ✅ Redlock 基线 |
-| **预占库存** | Redis / DB hold + TTL | ❌ → PE-4 加固 |
-| **DB 条件更新** | MyBatis 乐观 / 条件 `UPDATE` | ❌ → PE-4 加固 |
-| **秒杀限流** | Sentinel + MQ 削峰 | ❌ → PE-4 加固 |
-| **搜索** | Elasticsearch | ✅ PE-3 |
-| **购物车** | Redis | 当前 Postgres → **PE-6** |
-| **链路追踪** | Sleuth / Zipkin | ✅ OpenTelemetry + Jaeger |
-| **分布式事务 Seata** | 2PC | ❌ 有意不用 — **Saga 更常见**（跨服务不做 2PC） |
+| 扣库存锁 | Redisson | ✅ Redlock + HA 文档 |
+| 预占库存 | hold + TTL | ✅ `StockHoldService` |
+| DB 条件更新 | 条件 `UPDATE` | ✅ `ProductStockRepository` |
+| 秒杀限流 | Sentinel | ✅ YARP 固定窗口 |
+| 购物车 | Redis | ✅ PE-6（Postgres 真相源） |
+| 订单分片 | ShardingSphere | ✅ PE-7 UserId hash 试点 |
 
-**生产上常补的几层（按优先级）：**
+**结论：** 详见 [docs/PE4-PRODUCTION-HARDENING.md](docs/PE4-PRODUCTION-HARDENING.md)。
 
-1. **预占库存（reservation）** — 下单 / 创建 PaymentIntent 时占坑，超时释放（TTL）。
-2. **DB 原子扣减** — 一条语句完成，避免 read 与 write 之间的竞态：
-   ```sql
-   UPDATE products SET stock = stock - @q
-   WHERE id = @id AND stock >= @q;
-   ```
-3. **限流 / 排队** — 网关或秒杀专用队列，在 burst 流量下保护 Redis 和 DB。
-4. **Redis 高可用** — Sentinel / Cluster；真要 Redlock 则需多 master quorum。
-5. **PE-6 Redis 购物车** — **不同问题**（读快、跨设备同步）；**不能**替代扣库存锁或预占。
-6. **监控** — 锁等待时间、`LockNotAcquired` 次数、库存不一致告警。
+#### 4. PE-5 — Admin Saga 可见性 ✅
 
-**针对 Novacart 的结论：**
+**做了什么：** `CheckoutSagaAdminService` 列表/重试；DLQ retry；Admin `/admin/system` 页面。
 
-| 问题 | 答案 |
-|---|---|
-| **只有 Redis 锁够吗？** | **不够** — 只是库存并发的一环，不是全部。 |
-| **对当前 Novacart 阶段够吗？** | **够用** — 微服务 + Saga + 幂等 + Redis 锁，已覆盖「支付成功后扣库存、多副本不超卖」。 |
-| **要上真实大促 / 秒杀？** | **还不够** — 还要预占、DB 条件更新、限流、HA Redis；PE-6 是购物车优化，不是库存锁的替代。 |
+**教训：** PE-5 核心结账在 PE-1 Saga；**Admin 重试 UI** 是 PE-5 独立交付物。
 
-**总结：** Novacart 基线（PE-1 + PE-3 + PE-4 锁 + Saga）已对齐中级生产栈。与典型 Spring 商城生产实践的差距，见 [TODO.md § PE-4](TODO.md#pe-4--distributed-lock--inventory-hardening-redis)（预占、原子 SQL、限流、Redis HA、指标）和 [PE-6](TODO.md)（购物车缓存）。
+#### 5. PE-6 — Redis 购物车缓存 ✅
 
-#### 4. 「测试通过」仍证明不了什么（PE-1 ~ PE-4）
+**技术栈：** `CartRedisStore` · `CartRedisSnapshot` · `CartRedisOptions`。
+
+**做了什么：** 读缓存 / 写 PG + write-through；价格库存仍走 catalog；clear/merge/checkout 时删 key。
+
+**踩坑：**
+
+| 坑 | 原因 | 解决方案 |
+|---|---|---|
+| **`Cart` 命名空间与实体冲突** | DTO 命名空间 vs 实体类 | 别名 `CartEntity = …Entities.Cart`；**禁止**对 `CartService.cs` 做 replace_all |
+| **在 Redis 里缓存价格** | 价格规则会变 | 只缓存 line items；DTO 构建时查 catalog |
+
+**结论：** [docs/PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md)。默认 `CartRedis.Enabled=false`。
+
+#### 6. PE-7 — 订单 SQL 分片试点 ✅
+
+**技术栈：** `OrderShardResolver`（FNV-1a）· `order_shard_routes` · `IShardedOrderDb` · `novacart_commerce_0/1`。
+
+**做了什么：** 按 UserId 路由 orders/items/payments；路由表在 legacy commerce DB；Admin fan-out；webhook 按 orderId 查路由。
+
+**踩坑：**
+
+| 坑 | 原因 | 解决方案 |
+|---|---|---|
+| **`Guid.GetHashCode()` 做分片** | 不稳定 / 可能为负 | FNV-1a + 无符号取模 |
+| **CartService replace_all** | 破坏 DTO/接口名 | 仅实体用别名 |
+| **Admin 跨分片分页** | 无法单库 ORDER BY | fan-out + 内存合并（试点够用） |
+| **Analytics 仍单库** | 未改 `AnalyticsService` | 文档标注后续 fan-out/OLAP |
+
+**结论：** [docs/PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md)。默认 `OrderSharding.Enabled=false`。
+
+#### 7. 「测试通过」仍证明不了什么（PE-1 ~ PE-7）
 
 与 S3 那次同一主题：
 
 - **单元测试全绿**没抓到 Cart/Order 启动 DI 失败 — 只有 **完整 compose up** 才暴露。
 - **InMemory EF** 没验证 Postgres `ILIKE` 回退或真实 ES 查询。
 - **Mock 锁**没证明并发 — **Testcontainers Redis** 才证明。
-- **HANDOFF 冒烟**（`GET /api/products?q=…` → `searchEngine: "elasticsearch"`）是 PE-3 的验收标准。
+- **PE-6/PE-7 测试默认关闭** — `DisabledCartRedisStore` / `SingleDbShardedOrderDb`；启用分片/购物车缓存需在 staging 做集成验证。
+- **HANDOFF 冒烟**（`GET /api/products?q=…` → `searchEngine: "elasticsearch"`）是 PE-3 验收标准。
 
-**经验法则：** 任何涉及**多容器**、**外部基础设施**（ES、Redis、RabbitMQ）或**共享 DI** 的 PE，完成后跑 `docker compose up --build -d`、确认 `db-migrate` exit 0，再经网关打接口 — 不要只跑宿主机 `dotnet test`。
+**经验法则：** 涉及**多容器**、**外部基础设施**（ES、Redis、RabbitMQ）、**共享 DI** 或 **多库路由** 的 PE，完成后跑 `docker compose up --build -d`、确认 `db-migrate` exit 0，再经网关打接口 — 宿主机无 .NET 8 时用 `Dockerfile.backend.test`。
 
 ---
 > **⚠️ 重要：使用任何技术之前，务必先阅读官方文档。**

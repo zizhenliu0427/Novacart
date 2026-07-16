@@ -5,9 +5,9 @@
 > project, the conventions to follow, the frontend design system to build against, and the
 > **Priority 2 (P2)** & **Priority 3 (P3)** feature-by-feature implementation checklist.
 >
-> **Status:** Priority 1 (MVP), Priority 2 (P2), Priority 3 (P3), and P14 are **complete**. **PE-1 / PE-2 / PE-3 / PE-4 / PE-10** are **implemented** (default `docker compose up`). **PE-6+** remain in [TODO.md](TODO.md).
+> **Status:** Priority 1 (MVP), Priority 2 (P2), Priority 3 (P3), and P14 are **complete**. **PE-1 through PE-7 and PE-10** are **implemented** (PE-6/PE-7 disabled by default via config). **PE-8+** remain in [TODO.md](TODO.md).
 >
-> Last updated: 2026-07-15 — P14 preferred + docs complete: JWT refresh tokens (rotation + reuse detection), async email queue (Channel + BackgroundService), S3 object storage with LocalStack (no AWS account needed), plus ARCHITECTURE/UI-DESIGN/USER-GUIDE/DEMO docs. Backend **130** tests, frontend **24** tests, all passing.
+> Last updated: 2026-07-16 — PE-4 production hardening, PE-5 admin saga/DLQ UI, PE-6 Redis cart cache, PE-7 order SQL sharding pilot (UserId hash, off by default).
 
 
 ---
@@ -515,17 +515,17 @@ P2 and P3 are **fully complete & verified**.
 
 Canonical source: [README §Planned Enhancements](README.md#planned-enhancements). Actionable checklist: **[TODO.md](TODO.md)**.
 
-All items below are **not yet implemented** — explicitly out of scope for P1/P2/P3/P14. Do **not** start these unless the trigger condition is met. Email is already async via in-process `Channel<T>`; cart already merges guest→user in PostgreSQL — these entries describe the *next* scaling step beyond that.
+All items below are **not yet implemented** unless marked ✅ — explicitly out of scope for P1/P2/P3/P14 until their trigger. **PE-1 through PE-7 and PE-10 are complete** (see [TODO.md](TODO.md)); remaining: PE-8, PE-9, PE-10 optional follow-ups.
 
 | # | Enhancement | Purpose (from README) | First natural trigger |
 |---|---|---|---|
-| PE-1 | **Microservices (final)** | **.NET Aspire** + **YARP** + **Polly**; Auth / Product / Cart / Order. **MassTransit + RabbitMQ**, **Transactional Outbox**, **MassTransit Saga** for checkout. Design: [docs/MICROSERVICES-PE1.md](docs/MICROSERVICES-PE1.md). | Multiple teams, uneven scaling, or durable messaging needed across replicas. |
+| PE-1 | **Microservices (final)** | ✅ **Complete** — Aspire + YARP + Polly; Auth / Product / Cart / Order; MassTransit + Outbox + Saga. [docs/MICROSERVICES-PE1.md](docs/MICROSERVICES-PE1.md). | — |
 | PE-2 | **RabbitMQ** | ✅ **Part of PE-1 final** — MassTransit transport; replaces in-process `EmailQueue` at scale. | (See PE-1.) |
 | PE-3 | **ElasticSearch** | ✅ Full-text product search (Product API; Postgres fallback). | — |
 | PE-4 | **Distributed Lock & inventory hardening** | **✅ Complete** — Redlock + checkout holds (TTL) + atomic SQL + YARP rate limit + Redis HA docs + OTel metrics. **PE-6 cart ≠ stock lock.** | — |
-| PE-5 | **Async Order Processing** | ✅ **Part of PE-1 final** — MassTransit Saga + admin saga/DLQ retry UI. | — |
-| PE-6 | **Cart Optimisation** | Redis-backed cart: sub-ms reads, cross-device sync, guest-to-user merge. | PostgreSQL cart latency or cross-device sync becomes a bottleneck (current guest merge already works in Postgres). |
-| PE-7 | **SQL Sharding** | Horizontal partitioning of large tables by date or user ID. | Single Postgres instance hits storage/IO limits on orders or audit tables. |
+| PE-5 | **Async Order Processing** | ✅ **Complete** — MassTransit Saga (PE-1) + admin saga list / DLQ retry UI. | — |
+| PE-6 | **Cart Optimisation** | ✅ **Complete** — Redis cart snapshot (Postgres source of truth); `CartRedis.Enabled=false` by default. See [docs/PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md). | — |
+| PE-7 | **SQL Sharding** | ✅ **Complete (pilot)** — UserId-hash order sharding (`novacart_commerce_0/1`); `OrderSharding.Enabled=false` by default. See [docs/PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md). | — |
 | PE-8 | **Thread Pool Tuning** | Custom thread pool for flash sales and bulk order processing. | Thread-pool starvation or tail latency under burst checkout load. |
 | PE-9 | **AI Chatbot (Low Priority)** | Customer service bot via **OpenAI API** or **Ollama** (local LLM). | Product/support requirement for automated Q&A on orders, shipping, returns. |
 | PE-10 | **Internationalisation (i18n)** | Bilingual UI (Chinese/English) with URL-based language routing (`/en/`, `/zh/` via next-intl). | ✅ Implemented (admin form copy optional follow-up). |
@@ -543,10 +543,11 @@ Work in vertical slices; each PE item in [TODO.md](TODO.md) expands into concret
 7. **PE-1 Phase 8:** Refit catalog client; AppHost 4 DB; prod compose + K8s probes; gateway route tests. ✅
 8. **PE-1 seal:** Stripe refund; saga integration tests; E2E smoke script; [DATABASE-PER-SERVICE.md](docs/DATABASE-PER-SERVICE.md). ✅ — **PE-1 production-ready for dev/staging.**
 9. **PE-3:** ElasticSearch on Product API ✅ — see [docs/PE3-ELASTICSEARCH.md](docs/PE3-ELASTICSEARCH.md).
-10. **PE-4 baseline:** Redlock + `StockReservationConcurrencyTests` ✅ — see [TODO.md § PE-4](TODO.md#pe-4--distributed-lock--inventory-hardening-redis).
-11. **PE-4 hardening (next):** stock reservation + atomic SQL + gateway rate limit + Redis HA + observability — typical complement to Spring Cloud mall inventory stacks (see TODO Spring Cloud table).
-3. **PE-6** (Redis cart) optional without full PE-1 if staying monolith — **does not replace PE-4 stock lock or reservation.**
-4. **PE-9 / PE-10** are product-driven; PE-10 i18n ✅ done.
+10. **PE-4 baseline + hardening:** Redlock + holds + atomic SQL + YARP rate limit + Redis HA docs + OTel metrics ✅ — [docs/PE4-PRODUCTION-HARDENING.md](docs/PE4-PRODUCTION-HARDENING.md).
+11. **PE-5 admin:** Saga list + DLQ retry UI ✅ — `CheckoutSagaAdminService`, `/admin/system`.
+12. **PE-6:** Redis cart cache ✅ — [docs/PE6-REDIS-CART.md](docs/PE6-REDIS-CART.md); disabled by default.
+13. **PE-7:** Order SQL sharding pilot ✅ — [docs/PE7-SQL-SHARDING.md](docs/PE7-SQL-SHARDING.md); disabled by default.
+14. **PE-8+** — thread pool tuning, AI chatbot; PE-10 i18n ✅ done (admin form copy optional).
 
 #### Per-phase test gate (do not skip the check; only add tests when warranted)
 
